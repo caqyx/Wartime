@@ -245,9 +245,9 @@ WT.diplomacy = (function () {
     }
     if (type === 'annex') {
       var collapse = capitalLost(evaluator) && occupiedShare(evaluator) > 0.5;
-      if (age < 10 && !collapse) return { accept: false, reason: name(evaluator) + ': wojna trwa dopiero ' + age + ' tur — nie skapitulujemy.' };
-      if (-my >= 40 || collapse) return { accept: true, reason: name(evaluator) + ' kapituluje i oddaje okupowane prowincje.' };
-      return { accept: false, reason: name(evaluator) + ' odrzuca: wynik wojny ' + (-my) + ' (wymagane 40 albo utrata stolicy i >50% prowincji).' };
+      if (age < 20 && !collapse) return { accept: false, reason: name(evaluator) + ': wojna trwa dopiero ' + age + ' tur — nie skapitulujemy.' };
+      if (-my >= 50 || collapse) return { accept: true, reason: name(evaluator) + ' kapituluje i oddaje okupowane prowincje.' };
+      return { accept: false, reason: name(evaluator) + ' odrzuca: wynik wojny ' + (-my) + ' (wymagane 50 albo utrata stolicy i >50% prowincji).' };
     }
     if (-my >= 25 || ex >= 50) return { accept: true, reason: name(evaluator) + ' przyjmuje żądania i płaci reparacje.' };
     return { accept: false, reason: name(evaluator) + ' odrzuca żądania (wynik ' + (-my) + ', wymagane 25).' };

@@ -232,9 +232,14 @@ WT.ai = (function () {
     return threats;
   }
 
+  var ALLIANCE_GRACE_TURNS = 16;
+
   function seekAlliance(cc, ctx) {
     var c = S.country(cc);
     if (D().alliesOf(cc).length >= 3 || turn() - c.ai.lastAlliance < 10) return;
+    // świat startuje bez sojuszy: w pokoju bloki tworzą się powoli, dopiero po kilku miesiącach
+    var atWar = D().enemiesOf(cc).length > 0;
+    if (!atWar && (turn() < ALLIANCE_GRACE_TURNS || !U.chance(0.25))) return;
     var threats = threatsTo(cc, ctx);
     if (!threats.length) return;
     var partner = bestAlliancePartner(cc, threats, ctx);

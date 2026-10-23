@@ -20,7 +20,7 @@ from collections import defaultdict, Counter
 
 import numpy as np
 from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import dijkstra
+from scipy.sparse.csgraph import dijkstra, connected_components
 import shapely
 from shapely.geometry import shape, Polygon, MultiPolygon, Point, box, LineString
 from shapely.ops import unary_union, nearest_points, polylabel
@@ -42,6 +42,7 @@ BG_SIMPLIFY_DEG = 0.08
 SEA_MAX_KM = 450
 SEA_LAND_FRAC = 0.08
 STRAIT_KM = 40
+STRAIT_MIN_PART = 8.0             # map units^2 (~150-300 km2): smaller islets give no strait
 MAX_PROV = 90
 
 # Extra (non Europe/Asia "CONTINENT") countries that are included as playable.
@@ -56,6 +57,7 @@ MERGE_INTO = {
     "ALD": "FIN", "FRO": "DNK",
     "GIB": "GBR",
 }
+FOLDED_NAMES = {"CYN": "Northern Cyprus", "KAS": "Siachen", "WSB": "Akrotiri", "ESB": "Dhekelia"}
 # admin-0 units dropped entirely (outside scope / not land of a playable state)
 DROP = {"IOA", "PGA", "SCR", "ATC", "USG", "SPI", "BJN", "GRL", "EGY", "PNG"}
 # admin names to skip (overseas parts that share an adm0 code)
@@ -148,6 +150,22 @@ def shift_antimeridian(g):
             p = shapely.transform(p, lambda c: c + np.array([360.0, 0.0]))
         out.append(p)
     return unary_union(out) if out else g
+
+
+PL_PREFIXES = ("województwo ", "prowincja ", "prefektura ", "gubernatorstwo ", "muhafaza ",
+               "departament ", "hrabstwo ", "dystrykt ", "region ", "okręg ", "obwód ", "stan ")
+
+
+def clean_pl(s):
+    """'województwo mazowieckie' -> 'Mazowieckie', 'Prowincja Chiang Mai' -> 'Chiang Mai'."""
+    if not s:
+        return None
+    t = s.strip()
+    for pre in PL_PREFIXES:
+        if t.lower().startswith(pre) and len(t) > len(pre) + 2:
+            t = t[len(pre):]
+            break
+    return t[:1].upper() + t[1:]
 
 
 def fill_holes(g):
@@ -261,10 +279,12 @@ def main():
         if g.is_empty or g.area < 1e-7:
             continue
         name = p.get("name") or p.get("name_en") or p.get("gn_name")  # None => forced merge
+        name_pl = clean_pl(p.get("name_pl")) or name
         if code in MERGE_INTO:
-            name = a0props[code]["NAME_EN"]
+            name = FOLDED_NAMES.get(code) or a0props[code]["NAME_EN"]
+            name_pl = a0props[code].get("NAME_PL") or name
         units.append({
-            "name": name, "cc": owner_of[code], "src": code,
+            "name": name, "name_pl": name_pl, "cc": owner_of[code], "src": code,
             "region": p.get("region") or "", "geom": g, "area": area_km2(g),
         })
     print(f"admin-1 units in scope: {len(units)}")
@@ -279,8 +299,20 @@ def main():
             cover = unary_union([units[i]["geom"] for i in by_cc[owner_of[code]]])
             g = as_multi(g.difference(cover))
             if g.area > 1e-6:
-                units.append({"name": a0props[code]["NAME_EN"], "cc": owner_of[code], "src": code,
+                units.append({"name": a0props[code]["NAME_EN"], "name_pl": a0props[code].get("NAME_PL") or "",
+                          "cc": owner_of[code], "src": code,
                               "region": "", "geom": g, "area": area_km2(g)})
+
+    # ---- city population per admin-1 unit (used to name merged provinces)
+    utree = STRtree([u["geom"] for u in units])
+    for f in places["features"]:
+        pp = f["properties"]
+        if owner_of.get(pp.get("adm0_a3")) is None:
+            continue
+        lon = pp["longitude"] + (360 if pp["longitude"] < -100 else 0)
+        for j in utree.query(Point(lon, pp["latitude"]), predicate="intersects"):
+            units[int(j)]["cpop"] = units[int(j)].get("cpop", 0) + (pp.get("pop_max") or 0)
+            break
 
     # ---- dissolve folded-in admin-0 units (HKG, MAC, CYN, ALD, ...) into one unit each
     folded = defaultdict(list)
@@ -289,8 +321,8 @@ def main():
         (folded[u["src"]] if u["src"] in MERGE_INTO else rest).append(u)
     for code, us in folded.items():
         g = as_multi(unary_union([u["geom"] for u in us]))
-        rest.append({"name": us[0]["name"], "cc": us[0]["cc"], "src": code, "region": "",
-                     "geom": g, "area": area_km2(g)})
+        rest.append({"name": us[0]["name"], "name_pl": us[0]["name_pl"], "cc": us[0]["cc"], "src": code, "region": "",
+                     "geom": g, "area": area_km2(g), "cpop": sum(u.get("cpop", 0) for u in us)})
     units = rest
 
     # ---- merging per country
@@ -413,39 +445,63 @@ def main():
     # ---- population (also gives the biggest cities per province, used for ports)
     pops, cities = distribute_population(provinces, final_geoms, places, a0props, owner_of)
 
-    # ---- ports: coast point nearest the biggest coastal city, else nearest the label point
+    # ---- ports: on open coast (not deep in an estuary/lagoon), next to the biggest coastal city,
+    #      else nearest the label point; islet-only coasts are avoided when possible
+    shapely.prepare(land_filled)
+    ang = np.linspace(0, 2 * np.pi, 12, endpoint=False)
+    ring = np.concatenate([np.column_stack([r * np.cos(ang), r * np.sin(ang)]) for r in (1.5, 3.0, 4.5)])
     ports = []
     for i, g in enumerate(final_geoms):
         if not coastal[i]:
             ports.append(None)
             continue
-        lp = Point(labels[i])
         c = coast_lines[i]
-        near = [pt for _, pt in sorted(cities[i], key=lambda t: -t[0]) if c.distance(pt) <= 8.0]
-        if near:
-            pt = nearest_points(c, near[0])[0]
-            ports.append((round(pt.x, 1), round(pt.y, 1)))
-            continue
-        # prefer the longest coastal stretch's nearest point to label (avoid tiny islets)
-        segs = [s for s in getattr(c, "geoms", [c]) if s.length > 0]
-        segs.sort(key=lambda s: -s.length)
-        if segs:
-            main = unary_union([s for s in segs if s.length >= 0.25 * segs[0].length])
-            pt = main.interpolate(main.project(lp)) if main.geom_type == "LineString" else nearest_points(main, lp)[0]
-        else:
-            pt = nearest_points(c, lp)[0]
-        ports.append((round(pt.x, 1), round(pt.y, 1)))
+        segs = [q for q in getattr(c, "geoms", [c]) if q.length > 0]
+        longest = max(q.length for q in segs)
+        pts = []
+        for q in segs:
+            if q.length < 0.1 * longest and q.length < 3:
+                continue  # tiny islet coast
+            k = max(2, int(q.length / 0.7))
+            for t in np.linspace(0, 1, k):
+                pp = q.interpolate(t, normalized=True)
+                pts.append((pp.x, pp.y))
+        if not pts:
+            pp = segs[0].interpolate(0.5, normalized=True)
+            pts = [(pp.x, pp.y)]
+        pts = np.array(pts)
+        sx = (pts[:, None, 0] + ring[None, :, 0]).ravel()
+        sy = (pts[:, None, 1] + ring[None, :, 1]).ravel()
+        openness = (~shapely.contains_xy(land_filled, sx, sy)).reshape(len(pts), -1).mean(axis=1)
+        good = pts[openness >= max(0.3, 0.6 * openness.max())]
+        if len(good) == 0:
+            good = pts[openness >= openness.max()]
+        target = None
+        for _, cpt in sorted(cities[i], key=lambda t: -t[0]):
+            if np.min(np.hypot(good[:, 0] - cpt.x, good[:, 1] - cpt.y)) <= 8.0:
+                target = (cpt.x, cpt.y)
+                break
+        if target is None:
+            target = labels[i]
+        k = int(np.argmin(np.hypot(good[:, 0] - target[0], good[:, 1] - target[1])))
+        ports.append((round(float(good[k, 0]), 1), round(float(good[k, 1]), 1)))
 
     # ---- straits
     land_eroded = land_filled.buffer(-1.0)
     shapely.prepare(land_eroded)
     straits = set()
-    for i, g in enumerate(final_geoms):
-        for j in tree.query(g, predicate="dwithin", distance=25.0):
+    # only substantial land counts for straits (no land bridge via islets such as Kinmen)
+    major = []
+    for g in final_geoms:
+        ps = [q for q in polys_of(g) if q.area >= STRAIT_MIN_PART]
+        major.append(unary_union(ps) if ps else max(polys_of(g), key=lambda q: q.area))
+    mtree = STRtree(major)
+    for i, g in enumerate(major):
+        for j in mtree.query(g, predicate="dwithin", distance=25.0):
             j = int(j)
             if j <= i or j in nb[i]:
                 continue
-            a, b = nearest_points(g, final_geoms[j])
+            a, b = nearest_points(g, major[j])
             d = km_between_xy((a.x, a.y), (b.x, b.y))
             if d <= STRAIT_KM and seg_land_frac(land_filled, a, b) <= 0.5:
                 straits.add((i, j))
@@ -475,7 +531,8 @@ def main():
         lon, lat = unproj_xy(labels[i][0], labels[i][1])
         out_prov.append({
             "id": i,
-            "name": provinces[i]["name"],
+            "name": provinces[i]["name_pl"] or provinces[i]["name"],
+            "name_en": provinces[i]["name"],
             "cc": provinces[i]["cc"],
             "poly": rings,
             "bbox": [round(bx[0], 1), round(bx[1], 1), round(bx[2], 1), round(bx[3], 1)],
@@ -531,6 +588,13 @@ def merge_country(us, target):
     for u in us:
         u["geom"] = shapely.make_valid(u["geom"])
     alive = set(range(len(us)))
+
+    def weight(k):
+        """Name priority: city population + 20 people/km2 baseline (Istanbul beats Kirklareli)."""
+        u = us[k]
+        if u.get("noname") or not u["name"]:
+            return -1
+        return u.get("cpop", 0) + 20.0 * u["area"]
     tree = STRtree([u["geom"] for u in us])
     adj = defaultdict(set)
     for i, u in enumerate(us):
@@ -540,11 +604,15 @@ def merge_country(us, target):
                 adj[i].add(j)
                 adj[j].add(i)
 
-    def do_merge(a, b):  # merge a into b (or larger name wins)
+    def do_merge(a, b):  # merge two units; the name of the "heavier" one survives
         big, small = (a, b) if us[a]["area"] >= us[b]["area"] else (b, a)
+        if weight(small) > weight(big):
+            us[big]["name"] = us[small]["name"]
+            us[big]["name_pl"] = us[small]["name_pl"]
         g = unary_union([us[big]["geom"], us[small]["geom"]])
         us[big]["geom"] = as_multi(g)
         us[big]["area"] += us[small]["area"]
+        us[big]["cpop"] = us[big].get("cpop", 0) + us[small].get("cpop", 0)
         alive.discard(small)
         for k in adj[small]:
             adj[k].discard(small)
@@ -563,7 +631,7 @@ def merge_country(us, target):
             gi = us[i]["geom"]
             j = max(nbs, key=lambda k: us[k]["area"]) if nbs else \
                 min((k for k in alive if k != i and us[k]["name"]), key=lambda k: gi.distance(us[k]["geom"]))
-            us[i]["area"] = 0.0  # make sure the named unit wins
+            us[i]["noname"] = True  # make sure the named unit wins
             do_merge(i, j)
 
     # enclaves: unit lying inside the hole of a same-country unit
@@ -633,8 +701,9 @@ def build_sea_links(coast_ids, ports, land_filled, land_eroded, provinces, canal
 
     Water routing grid: cells outside land eroded by one cell (so straits a few km wide stay
     open: Bosporus, Danish straits, Kerch, Messina...). Sea distance = shortest water path.
-      * base rule (SPEC): straight port distance <= 450 km and the segment is (almost) at sea
-        -> checked as: straight segment land share <= 8%  OR  water path <= 1.3 x straight + 30 km
+      * base rule (SPEC): straight port distance <= 450 km, straight segment land share <= 8%,
+        and a water path exists that is <= 1.5 x straight + 50 km (same sea, no isthmus hopping);
+        plus short coast-hugging hops (<= 250 km, water path <= 1.25 x straight + 25 km)
       * every coastal province gets >= 2 links (nearest by water path)
       * components that share water get joined by their shortest water path
       * Suez canal link (Egypt is outside the game)
@@ -671,6 +740,9 @@ def build_sea_links(coast_ids, ports, land_filled, land_eroded, provinces, canal
         cols.append(b[m])
         wts.append(np.sqrt(hx ** 2 + vy ** 2))
     graph = coo_matrix((np.concatenate(wts), (np.concatenate(rows), np.concatenate(cols))), shape=(N, N)).tocsr()
+    # only cells of sizeable water bodies are valid port anchors (skip lagoons / estuary pockets)
+    ncomp, lab = connected_components(graph, directed=False)
+    big_comp = np.bincount(lab) >= 400
 
     m = len(coast_ids)
     P = np.array([ports[i] for i in coast_ids], dtype=float)
@@ -682,10 +754,10 @@ def build_sea_links(coast_ids, ports, land_filled, land_eroded, provinces, canal
     for a in range(m):
         cx, cy = int(P[a, 0] // G), int(P[a, 1] // G)
         best = None
-        for r in range(0, 6):
+        for r in range(0, 12):
             for yy in range(max(0, cy - r), min(ny, cy + r + 1)):
                 for xx in range(max(0, cx - r), min(nx, cx + r + 1)):
-                    if node[yy, xx] >= 0:
+                    if node[yy, xx] >= 0 and big_comp[lab[node[yy, xx]]]:
                         d2 = ((xx + 0.5) * G - P[a, 0]) ** 2 + ((yy + 0.5) * G - P[a, 1]) ** 2
                         if best is None or d2 < best[0]:
                             best = (d2, node[yy, xx])
@@ -705,8 +777,12 @@ def build_sea_links(coast_ids, ports, land_filled, land_eroded, provinces, canal
     np.fill_diagonal(SD, np.inf)
 
     def land_frac(a, b):
+        """Land share of the straight port-port segment, ignoring 20 km at each end (estuaries)."""
         k = max(6, int(D[a, b] / 10))
         t = np.linspace(0, 1, k + 2)[1:-1]
+        if D[a, b] > 60:
+            e = 20.0 / D[a, b]
+            t = t[(t > e) & (t < 1 - e)]
         return float(np.mean(shapely.contains_xy(land_eroded, P[a, 0] + (P[b, 0] - P[a, 0]) * t,
                                                  P[a, 1] + (P[b, 1] - P[a, 1]) * t)))
 
@@ -715,17 +791,21 @@ def build_sea_links(coast_ids, ports, land_filled, land_eroded, provinces, canal
         for b in range(a + 1, m):
             if D[a, b] > SEA_MAX_KM or not np.isfinite(SD[a, b]):
                 continue
-            if SD[a, b] <= 1.3 * D[a, b] + 30 or land_frac(a, b) <= SEA_LAND_FRAC:
+            if SD[a, b] <= 1.5 * D[a, b] + 50 and land_frac(a, b) <= SEA_LAND_FRAC:
+                ok[(a, b)] = SD[a, b]
+            elif D[a, b] <= 250 and SD[a, b] <= 1.25 * D[a, b] + 25:  # short coast-hugging hop
                 ok[(a, b)] = SD[a, b]
     deg = Counter()
     for a, b in ok:
         deg[a] += 1
         deg[b] += 1
-    for a in range(m):  # >= 2 links each
-        for b in np.argsort(SD[a]):
-            if deg[a] >= 2 or not np.isfinite(SD[a, b]):
+    for a in range(m):  # >= 2 links each: nearest by water, penalising segments over land
+        cand = [int(b) for b in np.argsort(SD[a])[:8] if np.isfinite(SD[a, b])]
+        cand.sort(key=lambda b: SD[a, b] * (1 + 2 * land_frac(min(a, b), max(a, b))))
+        for b in cand:
+            if deg[a] >= 2:
                 break
-            key = (min(a, int(b)), max(a, int(b)))
+            key = (min(a, b), max(a, b))
             if key not in ok:
                 ok[key] = SD[a, b]
                 deg[a] += 1

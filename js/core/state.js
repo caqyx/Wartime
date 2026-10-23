@@ -210,7 +210,12 @@ WT.state = (function () {
     g.provinces.forEach(function (p, id) {
       if (p.ctrl !== p.owner) return;
       var front = idx.landAdj[id].some(function (n) { return WT.diplomacy.atWar(p.ctrl, g.provinces[n].ctrl); });
-      if (front) p.buildings.fort = Math.max(p.buildings.fort, 2);
+      if (front) p.buildings.fort = Math.max(p.buildings.fort, 3);
+    });
+    // stolice państw w trwających wojnach są umocnione (obrona Kijowa itp.)
+    Object.keys(g.countries).forEach(function (cc) {
+      var cap = g.countries[cc].capital;
+      if (cap >= 0 && WT.diplomacy.enemiesOf(cc).length) g.provinces[cap].buildings.fort = Math.max(g.provinces[cap].buildings.fort, 4);
     });
   }
 
@@ -255,6 +260,9 @@ WT.state = (function () {
   function applyStartOccupation(occ) {
     if (!G().countries[occ.by] || !G().countries[occ.cc]) return;
     occ.lonlat.forEach(function (ll) {
+      // punkt już w granicach okupanta (np. Krym w danych NE) — nie szukaj zastępczej prowincji
+      var here = U.provinceAtLonLat(ll[0], ll[1]);
+      if (here >= 0 && G().provinces[here].owner === occ.by) return;
       var id = U.provinceAtLonLat(ll[0], ll[1], function (i) { return G().provinces[i].owner === occ.cc; });
       if (id >= 0 && id !== G().countries[occ.cc].capital) setCtrl(id, occ.by);
     });

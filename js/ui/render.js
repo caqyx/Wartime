@@ -218,12 +218,14 @@
     if (mx < 0 || my < 0 || mx > MAP.width || my > MAP.height) return -1;
     var cell = spatial.cells[clampInt(my / GRID_CELL, spatial.rows) * spatial.cols + clampInt(mx / GRID_CELL, spatial.cols)];
     if (!cell) return -1;
+    // Enklawy (np. Brema, Watykan) leżą na poligonie sąsiada bez dziury — wygrywa najmniejsze trafienie.
+    var best = -1, bestArea = Infinity;
     for (var i = 0; i < cell.length; i++) {
-      var id = cell[i], b = MAP.provinces[id].bbox;
+      var id = cell[i], p = MAP.provinces[id], b = p.bbox;
       if (mx < b[0] || mx > b[2] || my < b[1] || my > b[3]) continue;
-      if (pickCtx.isPointInPath(provPaths[id], mx, my)) return id;
+      if (p.areaKm2 < bestArea && pickCtx.isPointInPath(provPaths[id], mx, my)) { best = id; bestArea = p.areaKm2; }
     }
-    return -1;
+    return best;
   }
   R.pickProvince = pickProvince;
 

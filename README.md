@@ -1,0 +1,42 @@
+# Wartime 2026
+
+Turowa gra strategiczna w stylu Age of History II. Mapa Europy i Azji (1026 prowincji, 94 państwa) w stanie na 1 stycznia 2026. Wszystkie państwa grywalne, na starcie bez sojuszy.
+
+## Uruchomienie
+
+Otwórz `index.html` w przeglądarce (działa z `file://`) albo:
+
+```
+python3 -m http.server 8000   # http://localhost:8000
+```
+
+## Sterowanie
+
+| Akcja | Sterowanie |
+|---|---|
+| Przesuwanie mapy | przeciąganie / WASD / strzałki |
+| Zoom | kółko myszy / `+` `-` |
+| Rozkaz ruchu armii | przeciągnij armię na cel **albo** zaznacz armię i PPM na cel → suwak "ile wysłać" → Enter |
+| Desant | jak ruch, cel za morzem — wymaga własnej floty w porcie z armią |
+| Koniec tury | Spacja |
+| Tryby mapy | 1 polityczna, 2 dyplomacja, 3 ekonomia, 4 teren |
+| Scal armie w prowincji | M |
+| Odznacz / zamknij | Esc |
+
+## Mechaniki
+
+- **Tura = tydzień.** Armia ma 2 punkty ruchu: prowincja własna/sojusznicza kosztuje 1, wroga 2 (kończy ruch), góry/dżungla +1. Trasy wieloprowincyjne (A*) wykonują się przez kolejne tury.
+- **Bitwy:** liczebność × technologia × morale, bonus obrońcy za fort i teren, ograniczona szerokość frontu. Wolna prowincja wroga zostaje okupowana (fort = oblężenie).
+- **Ekonomia:** PKB 2026, podatki, utrzymanie armii/floty, administracja. Budynki: fabryka, fort, port, koszary.
+- **Dyplomacja:** wojna, pokój (biały / aneksja okupowanych / reparacje), sojusze obronne zawierane w trakcie gry, pakty o nieagresji, relacje.
+- **Flota:** eskadry poruszają się po grafie morskim, przewożą wojsko (1 eskadra = 10 tys.), bitwy morskie.
+- **God Mode:** nielimitowana kasa i rezerwy, natychmiastowe budowy, przejmowanie prowincji, dodawanie armii, wymuszanie pokoju/sojuszu, ustawianie relacji. Włączany na starcie lub w trakcie gry.
+- **Zapis:** 5 slotów + autosave co 5 tur, eksport/import JSON.
+- **Konflikty 2026** (opcja): Rosja–Ukraina (okupowany Donbas, Krym), Izrael–Palestyna.
+
+## Struktura
+
+- `data/map.js` — generowane przez `tools/build_map.py` z Natural Earth (`pip install shapely numpy scipy matplotlib`, `python3 tools/build_map.py --preview`).
+- `data/countries.js` — dane państw 2026 (PKB, populacja, armia, flota, relacje).
+- `js/core/*` — logika bez DOM, `js/ui/*` — renderer canvas i UI. Kontrakt modułów: `docs/SPEC.md`.
+- Testy: `node tests/run_tests.js`, symulacja na prawdziwych danych: `node tests/sim_real.js 100`.

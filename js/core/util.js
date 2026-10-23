@@ -143,12 +143,13 @@ WT.util = (function () {
   }
   /** Prowincja zawierająca punkt (jednostki mapy); filter(id) opcjonalny. -1 gdy brak. */
   function provinceAt(x, y, filter) {
-    var provs = mapData().provinces;
+    var provs = mapData().provinces, best = -1, bestArea = Infinity;
     for (var i = 0; i < provs.length; i++) {
       if (filter && !filter(i)) continue;
-      if (pointInProvince(x, y, provs[i])) return i;
+      // enklawy leżą na poligonie sąsiada (bez dziur) — wygrywa najmniejsze trafienie
+      if (provs[i].areaKm2 < bestArea && pointInProvince(x, y, provs[i])) { best = i; bestArea = provs[i].areaKm2; }
     }
-    return -1;
+    return best;
   }
   function nearestProvince(x, y, filter) {
     var provs = mapData().provinces, best = -1, bd = Infinity;
