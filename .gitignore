@@ -1,3 +1,4 @@
 node_modules/
 tools/cache/
 tools/preview.png
+__pycache__/
