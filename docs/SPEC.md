@@ -187,7 +187,7 @@ G = {
   losowej po państwach.
 - `battle(attackers:[army], defenders:[army], provId) → { winner, lossesA, lossesD }`:
   siła = size × tech × morale(stabilność) × (obrońca: 1 + 0.25×fort + bonus terenu hills .15/mountains .35/forest .1/jungle .2)
-  × losowość 0.85–1.15. Straty: przegrany 25–45% swojej siły, wygrany proporcjonalnie (ratio). Przegrany się wycofuje
+  × losowość 0.85–1.15. Straty: przegrany 20–35% swojej siły (walczącej, patrz dodatki), wygrany proporcjonalnie (ratio). Przegrany się wycofuje
   do najbliższej własnej prowincji (lub ginie gdy brak).
 - Okupacja: armia wroga w prowincji bez obrońców na koniec ruchu → `ctrl = okupant` (ufortyfikowane: fort×1 tura oblężenia).
   Wejście do prowincji należącej do sojusznika okupowanej przez wroga → wyzwolenie (ctrl = owner).
@@ -235,6 +235,29 @@ G = {
 ### WT.save
 - `save(slot)`, `load(slot) → bool`, `list() → [{slot, player, date, turn, savedAt}]`, `remove(slot)`, `exportJSON()`, `importJSON(str)`.
   Klucz `wartime2026_slot_<n>` + `wartime2026_autosave`. Kompresja niewymagana, ale stan < 2 MB.
+
+### Dodatki do API (ponad kontrakt, zaimplementowane w js/core)
+- **WT.util**: `rand/randInt/randRange/chance/pick/shuffle` (mulberry32 na `G.rngState`), `PriorityQueue` (push(item,prio)/pop/size),
+  `clamp`, `key(a,b)`, `project(lon,lat)` / `unproject(x,y)` (Miller jak w build_map.py), `provinceAt(x,y)`, `provinceAtLonLat`,
+  `pointInProvince`, `hashColor`, `fmtK`, `fmtMoney`. `WT.events.off(name, fn)`, `clear()`; dodatkowe zdarzenia: `turn`, `gameover`.
+- **WT.state**: `rebuildIndex()`, `landNeighbors(id)` (nb+straits), `seaNeighbors(id)` → `[{to,d}]`, `countryNeighbors(cc)`,
+  `addLog(text, cc)`, `setOwner/setCtrl`, `createArmy/removeArmy/moveArmy`, `createFleet/removeFleet` (utrzymują indeksy — zawsze przez nie).
+  Pola dodatkowe w G: prowincja `gdp` (mld/rok, × `dev`), `siege: {by,t}|null`; kraj `startGdp, pop, baseArmy, navy, losses, ai{}`;
+  armia `prevProv`; flota `landAt, home`; `G.gameOver`. Propozycja ma też `text` (gotowy opis) i `turn`.
+- **WT.economy**: `buildCost(cc,provId,type)` (koszt rośnie z PKB prowincji i poziomem — używać zamiast `BUILDINGS[t].cost`),
+  `canBuildShips`, `countryGdp`, `gdpPerCapita`, `costScale`, `provGdp`. `income()` ma też `occupation` i `aid` (pomoc zagraniczna dla napadniętych),
+  `expenses()` ma też `admin` (8% PKB/rok — podatek < 8% to deficyt). Dług przy dodatnim bilansie nie demobilizuje.
+- **WT.military**: `estimateTurns(cc, path)`, `findPathFor(cc, from, dest)`, `canEnter(cc, provId)`, `power(cc)`, `split(army, size)`,
+  `retreat`, `engageAt`. Bitwa: szerokość frontu — walczy maks. max(100k, 2.5× wroga); przegrany traci 20–35% walczących
+  (przy przewadze > 6.7:1 — całość), wygrany proporcjonalnie. Armie na ziemi wroga: wyniszczenie 0.5%/turę.
+  `battle()` zwraca `{winner:'attackers'|'defenders', winnerCc, loserCc, attacker, defender, prov, sizeA, sizeD, lossesA, lossesD, annihilated}`.
+- **WT.naval**: `seaTurns(path)`, `freeCapacity(fleet)`, `isPort(provId)`, `unload(fleetId)` (wysadź ładunek w bieżącej prowincji).
+- **WT.diplomacy**: `breakPact(a,b)` (−50 z partnerem, −15 z resztą, −20 stabilności; `declareWar` przy pakcie zwraca błąd),
+  `improveRelationsCost(a)`, `checkDeclareWar(a,b) → reason|null`, `warBetween`, `warsOf`, `alliesOf`, `friendly` (sojusz/współwalczący),
+  `concludePeace(a,b,kind,winner)`, `setRel`. Typ `"demand"` = reparacje (30% skarbca + 0.5% PKB przegranego). Propozycje mają typ
+  dodatkowy `"callToArms"` (`terms:{warId, side, enemy}`); dla `"peace"`: `terms:{kind, winner}`. Wygasają po 3 turach.
+- **WT.turn**: `lastTimings()` → ms faz ostatniej tury. **WT.save**: `autosave()`; slot `"auto"` = autozapis.
+- **WT.god**: `spawnArmy(provId, cc, size)` — size w żołnierzach (wartości < 1000 traktowane jako tysiące).
 
 ## 5. UI (WT.render + WT.ui)
 
