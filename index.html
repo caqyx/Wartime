@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wartime 2026</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="map" aria-label="Mapa"></canvas>
+
+    <!-- Górny pasek -->
+    <header id="topbar" class="topbar hidden">
+      <div class="tb-country" id="tb-country" title="Twoje państwo"><span class="swatch" id="tb-swatch"></span><span id="tb-name">—</span></div>
+      <div class="tb-stat" title="Data"><span class="lbl">Data</span><span class="val" id="tb-date">—</span></div>
+      <div class="tb-stat" title="Skarbiec (mld USD)"><span class="lbl">Skarbiec</span><span class="val num" id="tb-treasury">—</span></div>
+      <div class="tb-stat" title="Bilans na turę (mld USD)"><span class="lbl">Bilans/turę</span><span class="val num" id="tb-balance">—</span></div>
+      <div class="tb-stat" title="Rezerwy rekrutacyjne"><span class="lbl">Rezerwy</span><span class="val num" id="tb-manpower">—</span></div>
+      <div class="tb-stat" title="Stabilność"><span class="lbl">Stabilność</span><span class="val num" id="tb-stability">—</span></div>
+      <div class="tb-stat" title="Łączna liczebność armii"><span class="lbl">Armia</span><span class="val num" id="tb-army">—</span></div>
+      <div class="tb-spacer"></div>
+      <span class="god-badge hidden" id="tb-god">GOD MODE</span>
+      <button class="btn" id="btn-diplomacy" title="Dyplomacja">Dyplomacja</button>
+      <button class="btn" id="btn-god" title="Narzędzia God Mode">God Mode</button>
+      <button class="btn" id="btn-menu" title="Menu">Menu</button>
+      <button class="btn btn-primary btn-endturn" id="btn-endturn" title="Koniec tury (Spacja)">Koniec tury <kbd>Spacja</kbd></button>
+    </header>
+
+    <!-- Menu rozwijane -->
+    <div id="menu" class="dropdown hidden">
+      <button class="menu-item" data-act="save">Zapisz / wczytaj…</button>
+      <button class="menu-item" data-act="god-toggle" id="menu-god-toggle">Włącz God Mode</button>
+      <button class="menu-item" data-act="help">Skróty klawiszowe</button>
+      <button class="menu-item danger" data-act="exit">Wyjście do menu głównego</button>
+    </div>
+
+    <!-- Panele boczne -->
+    <aside id="province-panel" class="panel panel-left hidden"></aside>
+    <aside id="diplo-panel" class="panel panel-right panel-wide hidden"></aside>
+    <aside id="god-panel" class="panel panel-right hidden"></aside>
+
+    <!-- Tryby mapy -->
+    <div id="mapmodes" class="mapmodes hidden">
+      <button class="mm-btn active" data-mode="political" title="Polityczny (1)"><span class="mm-ico ico-pol"></span>Polityczna<kbd>1</kbd></button>
+      <button class="mm-btn" data-mode="diplomatic" title="Dyplomatyczny (2)"><span class="mm-ico ico-dip"></span>Dyplomacja<kbd>2</kbd></button>
+      <button class="mm-btn" data-mode="economic" title="Ekonomiczny (3)"><span class="mm-ico ico-eco"></span>Ekonomia<kbd>3</kbd></button>
+      <button class="mm-btn" data-mode="terrain" title="Teren (4)"><span class="mm-ico ico-ter"></span>Teren<kbd>4</kbd></button>
+    </div>
+    <div id="legend" class="legend hidden"></div>
+
+    <!-- Pasek rozkazu -->
+    <div id="order-bar" class="order-bar hidden"></div>
+
+    <!-- Dziennik -->
+    <section id="log" class="log hidden">
+      <header class="log-head" id="log-head"><span>Dziennik zdarzeń</span><span class="log-toggle" id="log-toggle">▾</span></header>
+      <div class="log-body" id="log-body"></div>
+    </section>
+
+    <div id="toasts" class="toasts"></div>
+    <div id="tooltip" class="tooltip hidden"></div>
+
+    <!-- Ekran startowy -->
+    <section id="start-screen" class="start-screen hidden">
+      <div class="start-panel">
+        <div class="start-title">
+          <h1>WARTIME <span>2026</span></h1>
+          <p class="subtitle">Europa i Azja · 1 stycznia 2026 · wybierz państwo na mapie</p>
+        </div>
+        <label class="search"><input id="start-search" type="search" placeholder="Szukaj państwa…" autocomplete="off"></label>
+        <div id="start-results" class="country-list"></div>
+        <div id="start-card" class="country-card empty">Kliknij państwo na mapie lub wybierz z listy.</div>
+        <label class="check"><input type="checkbox" id="opt-god"> <span>God Mode (nielimitowana kasa)</span></label>
+        <label class="check"><input type="checkbox" id="opt-wars" checked> <span>Trwające konflikty 2026 (Rosja–Ukraina)</span></label>
+        <div class="start-actions">
+          <button class="btn btn-primary btn-lg" id="btn-start" disabled>Rozpocznij</button>
+          <button class="btn btn-lg" id="btn-load">Wczytaj grę</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="modal-root"></div>
+    <div id="busy" class="busy hidden"><div class="spinner"></div><span>Przetwarzanie tury…</span></div>
+    <div id="fatal" class="fatal hidden"></div>
+  </div>
+
+  <script src="data/map.js"></script>
+  <script src="data/countries.js"></script>
+  <script src="js/core/util.js"></script>
+  <script src="js/core/state.js"></script>
+  <script src="js/core/economy.js"></script>
+  <script src="js/core/diplomacy.js"></script>
+  <script src="js/core/military.js"></script>
+  <script src="js/core/naval.js"></script>
+  <script src="js/core/ai.js"></script>
+  <script src="js/core/god.js"></script>
+  <script src="js/core/turn.js"></script>
+  <script src="js/core/save.js"></script>
+  <script src="js/ui/render.js"></script>
+  <script src="js/ui/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
