@@ -23,6 +23,10 @@
     godTool: null,          // 'take' | 'army'
     godCC: null,
     godArmyK: 50,
+    planesN: 5,             // suwak budowy bombowców
+    airRepeat: false,       // ponawianie nalotów
+    airSel: null,           // id dywizjonu w trybie wyboru celu nalotu
+    rankSort: null,
     busy: false,
     modals: [],
     answered: {},
@@ -170,6 +174,10 @@
     landmark: '<path d="M3 21h18M5 18h14M6 18v-7M10 18v-7M14 18v-7M18 18v-7M3 9l9-6 9 6z"/>',
     download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
     upload: '<path d="M12 16V5M7 10l5-5 5 5M5 20h14"/>',
+    plane: '<path d="M21 15.5l-8-4.5V5a1.5 1.5 0 0 0-3 0v6l-8 4.5V17l8-2.5v4l-2.5 1.5V21l4-1 4 1v-1l-2.5-1.5v-4l8 2.5z"/>',
+    aa: '<path d="M4 20.5h16M7 20.5l2-6h6l2 6"/><path d="M12 14.5L18 5"/><path d="M17 8.5l3-1.5M15.5 4.5l1 3"/>',
+    radar: '<path d="M4.5 19.5a10 10 0 0 1 0-15"/><path d="M8 16a5.5 5.5 0 0 1 0-8"/><circle cx="12" cy="12" r="1.6"/><path d="M12 12l8.5-5"/><path d="M12 13.5v7"/>',
+    trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H4.5a3 3 0 0 0 3.5 4M16 6h3.5a3 3 0 0 1-3.5 4"/><path d="M12 13v4M8.5 20.5h7M9.5 17h5"/>',
     select: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17.5l2 2 4.5-4.5"/>',
     mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/>'
   };
@@ -177,7 +185,7 @@
     return '<svg class="ico' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
   }
   UI.icon = icon;
-  const BUILDING_ICONS = { factory: 'factory', fort: 'fort', port: 'anchor', barracks: 'tent' };
+  const BUILDING_ICONS = { factory: 'factory', fort: 'fort', port: 'anchor', barracks: 'tent', aa: 'aa', radar: 'radar' };
   const TOAST_ICONS = { war: 'alert', bad: 'alert', battle: 'swords', peace: 'check', ok: 'check' };
 
   // Suwaki: wypełnienie toru do wartości (zmienna CSS --p)
@@ -215,6 +223,7 @@
       if (kbd) b.appendChild(kbd);
       if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', label || b.title || '');
     };
+    btnIcon('btn-ranking', 'trophy');
     btnIcon('btn-diplomacy', 'handshake');
     btnIcon('btn-god', 'sparkles');
     btnIcon('btn-endturn', 'next', true);
@@ -222,7 +231,7 @@
     if (menuBtn && !menuBtn.querySelector('.ico')) { menuBtn.innerHTML = icon('menu'); menuBtn.classList.add('btn-icon'); menuBtn.setAttribute('aria-label', 'Menu'); }
     const endLabel = document.querySelector('#btn-endturn .btn-label'); if (endLabel) endLabel.classList.remove('btn-label');
     const god = $('tb-god'); if (god && !god.querySelector('.ico')) god.innerHTML = icon('sparkles') + 'GOD';
-    const menuIcons = { save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout' };
+    const menuIcons = { ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout' };
     document.querySelectorAll('#menu .menu-item').forEach((b) => {
       if (b.querySelector('.ico')) return;
       const txt = document.createElement('span'); txt.textContent = b.textContent; b.textContent = '';
@@ -316,7 +325,7 @@
   }
   function classifyText(t) {
     const s = (t || '').toLowerCase();
-    if (/wojn|atak|inwaz/.test(s)) return 'war';
+    if (/wojn|atak|inwaz|nalot|radar/.test(s)) return 'war';
     if (/bitw|starci|pokonan|zwycię/.test(s)) return 'battle';
     if (/pok[oó]j|sojusz|pakt|rozejm/.test(s)) return 'peace';
     return '';
@@ -372,7 +381,7 @@
     return [el.offsetWidth + 18, 0];
   }
   function showStart() {
-    S.inGame = false; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.godTool = null;
+    S.inGame = false; S.airSel = null; R().view.airRange = null; R().view.radarRing = null; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.godTool = null;
     document.body.classList.remove('in-game', 'ob-open');
     ['topbar', 'mapmodes', 'log', 'province-panel', 'diplo-panel', 'god-panel', 'order-bar', 'menu', 'legend'].forEach((id) => $(id).classList.add('hidden'));
     $('start-screen').classList.remove('hidden');
@@ -414,7 +423,7 @@
   // Wejście do gry / odświeżanie
   // ===========================================================================
   function enterGame(centerView) {
-    S.inGame = true; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.diploCC = null; S.godTool = null; S.answered = {}; S.gameOverShown = false; S.proposalOpen = false;
+    S.inGame = true; S.airSel = null; R().view.airRange = null; R().view.radarRing = null; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.diploCC = null; S.godTool = null; S.answered = {}; S.gameOverShown = false; S.proposalOpen = false;
     $('start-screen').classList.add('hidden');
     document.body.classList.add('in-game');
     ['topbar', 'mapmodes', 'log'].forEach((id) => $(id).classList.remove('hidden'));
@@ -494,6 +503,7 @@
     toggleMenu(false);
     if (act === 'save') openSaveMenu();
     else if (act === 'god-toggle') setGodMode(!isGod());
+    else if (act === 'ranking') openRanking();
     else if (act === 'help') openHelp();
     else if (act === 'exit') confirmModal('Wyjście', 'Wrócić do menu głównego? Niezapisany postęp zostanie utracony (autozapis co 5 tur).', 'Wyjdź', () => { WT.G = null; showStart(); }, true);
   }
@@ -510,6 +520,7 @@
     $('btn-endturn').addEventListener('click', endTurn);
     $('btn-menu').addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     $('btn-diplomacy').addEventListener('click', () => toggleDiplomacy());
+    $('btn-ranking').addEventListener('click', () => openRanking());
     $('btn-god').addEventListener('click', () => toggleGodPanel());
     $('tb-country').addEventListener('click', () => R().centerOnCountry(me(), 0.8));
     $('btn-more').addEventListener('click', (e) => { e.stopPropagation(); setTopbarExpanded(!$('topbar').classList.contains('tb-expanded')); });
@@ -667,11 +678,11 @@
     const buttons = '<button class="btn btn-primary" id="ob-go"' + (plan.ok ? '' : ' disabled') + '>Rozkaż <kbd>Enter</kbd></button><button class="btn btn-ghost" id="ob-cancel">Anuluj <kbd>Esc</kbd></button>';
     let html;
     if (S.sel.type === 'army') {
-      const max = u.size, step = max > 20000 ? 500 : 100;
-      const def = plan.kind === 'sea' && plan.capacity ? Math.min(max, Math.floor(plan.capacity / step) * step || max) : max;
+      // Suwak w procentach (0–100), a nie w żołnierzach: 100% zawsze oznacza dokładnie całą armię, bez reszty z zaokrąglenia kroku.
+      const capPct = plan.kind === 'sea' && plan.capacity ? Math.max(1, Math.min(100, Math.floor(100 * plan.capacity / u.size))) : 100;
       html = '<div class="ob-head"><span class="ob-title">' + icon('swords') + 'Armia ' + fmtK(u.size) + ' → ' + name + '</span>' + routeHtml + '</div>' +
-        '<div class="ob-row"><span class="dim">Wyślij:</span><input type="range" id="ob-size" min="' + Math.min(step, max) + '" max="' + max + '" step="' + step + '" value="' + def + '"' + (plan.ok ? '' : ' disabled') + '>' +
-        '<span class="ob-count" id="ob-count"></span>' + buttons + '</div>';
+        '<div class="ob-row"><span class="dim">Wyślij:</span><input type="range" id="ob-size" min="1" max="100" step="1" value="' + capPct + '"' + (plan.ok ? '' : ' disabled') + '>' +
+        '<span class="ob-count" id="ob-count"></span><button class="btn btn-sm" id="ob-all"' + (plan.ok ? '' : ' disabled') + '>Całość</button>' + buttons + '</div>';
     } else {
       html = '<div class="ob-head"><span class="ob-title">' + icon('ship') + 'Flota (' + u.ships + ' ' + plural(u.ships, 'eskadra', 'eskadry', 'eskadr') + ') → ' + name + '</span>' + routeHtml + '</div>' +
         '<div class="ob-row" style="justify-content:flex-end">' + buttons + '</div>';
@@ -680,10 +691,21 @@
     bar.classList.remove('hidden');
     document.body.classList.add('ob-open');
     const slider = $('ob-size');
-    if (slider) { const upd = () => { $('ob-count').innerHTML = '<b>' + fmtInt(+slider.value) + '</b> / ' + fmtInt(u.size); }; slider.addEventListener('input', upd); upd(); }
+    if (slider) {
+      const upd = () => { const n = orderSize(u); $('ob-count').innerHTML = '<b>' + fmtInt(n) + '</b> / ' + fmtInt(u.size) + (n === u.size ? ' <span class="dim">(całość)</span>' : ''); };
+      slider.addEventListener('input', upd); upd();
+      $('ob-all').addEventListener('click', () => { slider.value = 100; syncRange(slider); upd(); });
+    }
     $('ob-go').addEventListener('click', confirmOrder);
     $('ob-cancel').addEventListener('click', () => { closeOrderBar(); R().requestDraw(); });
     R().requestDraw();
+  }
+  /** Liczba wysyłanych żołnierzy z suwaka %; gdy w prowincji zostałaby drobna resztka — cała armia. */
+  function orderSize(u) {
+    const slider = $('ob-size');
+    if (!slider || +slider.value >= 100) return u.size;
+    const n = Math.max(WT.military.MIN_ARMY, Math.round(u.size * slider.value / 100 / 100) * 100);
+    return n >= u.size - WT.military.MIN_REMAINDER ? u.size : n;
   }
   function closeOrderBar() {
     $('order-bar').classList.add('hidden');
@@ -698,7 +720,7 @@
     let res;
     if (S.sel.type === 'fleet') res = call('naval.orderFleet', [u.id, plan.target], null);
     else {
-      const size = $('ob-size') ? +$('ob-size').value : u.size;
+      const size = orderSize(u);
       const sizeArg = size < u.size ? size : undefined;
       if (plan.kind === 'sea') res = call('naval.planInvasion', [u.id, plan.target, sizeArg], null);
       else res = call('military.order', [u.id, plan.target, sizeArg], null);
@@ -726,6 +748,7 @@
   UI.openProvince = openProvince;
   function closeProvince() {
     S.selProv = -1; R().view.selProv = -1;
+    setRadarRing(-1);
     $('province-panel').classList.add('hidden');
     R().requestDraw();
   }
@@ -736,7 +759,7 @@
     let html = '<div class="panel-head">' + swatch(owner) + '<h2>' + esc(ps.name) + '</h2><button class="close" data-act="close" title="Zamknij (Esc)" aria-label="Zamknij">' + icon('x') + '</button></div><div class="panel-body">';
     html += provinceInfoSection(ps, pd, owner, ctrl);
     html += provinceUnitsSection(id);
-    if (mine) html += buildingsSection(id, pd) + recruitSection(id, ctrl) + shipsSection(id, ps, pd);
+    if (mine) html += buildingsSection(id, pd) + recruitSection(id, ctrl) + shipsSection(id, ps, pd) + airSection(id, ctrl);
     else html += '<div class="section"><button class="btn" data-act="diplo" style="width:100%;justify-content:center">Dyplomacja z: ' + esc(countryName(owner)) + '</button></div>';
     html += '</div>';
     const panel = $('province-panel');
@@ -744,6 +767,7 @@
     panel.innerHTML = html;
     panel.scrollTop = scroll;
     bindProvincePanel(id);
+    setRadarRing(mine && ctrl === owner ? id : -1);
   }
   function provinceInfoSection(ps, pd, owner, ctrl) {
     let h = '<div class="section"><div class="kv">';
@@ -753,6 +777,12 @@
     h += '<span class="k">Powierzchnia</span><span class="v">' + fmtInt(ps.areaKm2) + ' km²</span>';
     h += '<span class="k">Teren</span><span class="v txt">' + esc(TERRAIN_PL[ps.terrain] || ps.terrain || '—') + (ps.coastal ? ' · wybrzeże' : '') + '</span>';
     if (pd.dev != null) h += '<span class="k">Rozwój</span><span class="v">' + fmtNum(pd.dev, 2) + '</span>';
+    if (pd.bombed > 0) h += '<span class="k">Po nalocie</span><span class="v neg">dochód −50% (' + turnsText(pd.bombed) + ')</span>';
+    if (WT.air && owner === me() && ctrl === owner) {
+      h += '<span class="k">Obrona plot.</span><span class="v">' + Math.round(100 * WT.air.interceptChance(S.selProv, null)) + '% zestrzeleń</span>';
+      const rl = (pd.buildings || {}).radar || 0;
+      if (rl) h += '<span class="k">Radar</span><span class="v">' + fmtInt(WT.air.radarRangeKm(rl)) + ' km</span>';
+    }
     if (pd.unrest) h += '<span class="k">Niepokoje</span><span class="v ' + (pd.unrest > 30 ? 'neg' : '') + '">' + fmtInt(pd.unrest) + '</span>';
     return h + '</div></div>';
   }
@@ -859,6 +889,7 @@
     }));
     bindRecruit(id);
     bindShips(id);
+    bindAir(id);
   }
   function bindRecruit(id) {
     const s = $('rec-k'); if (!s) return;
@@ -1234,7 +1265,7 @@
     }
     refreshAll();
   }
-  function updateCursor() { const c = $('map'); if (c) c.style.cursor = S.godTool ? 'crosshair' : ''; }
+  function updateCursor() { const c = $('map'); if (c) c.style.cursor = S.godTool || S.airSel ? 'crosshair' : ''; }
 
   // ===========================================================================
   // Zapis / wczytanie
@@ -1474,6 +1505,159 @@
   }
 
   // ===========================================================================
+  // Lotnictwo: bombowce w panelu prowincji, wybór celu nalotu, pierścień radaru
+  // ===========================================================================
+  function squadStatus(sq) {
+    if (sq.phase === 'out') return 'leci na: ' + provStatic(sq.target).name + (sq.repeat ? ' (powtarzane)' : '');
+    if (sq.phase === 'back') return 'wraca do bazy';
+    return 'w bazie';
+  }
+  function airSection(id, ctrl) {
+    if (!WT.air || ctrl !== me()) return '';
+    const squads = WT.air.squadronsAt(id).filter((q) => q.owner === me());
+    let h = '<div class="section"><div class="section-title">Lotnictwo</div>';
+    squads.forEach((q) => {
+      h += '<div class="air-row"><span class="air-ico">' + icon('plane') + '</span><span class="air-txt"><b>' + q.planes + '</b> ' + plural(q.planes, 'bombowiec', 'bombowce', 'bombowców') +
+        '<span class="dim">' + esc(squadStatus(q)) + '</span></span><span class="air-btns">' +
+        (q.phase === 'idle' ? '<button class="btn btn-sm btn-primary" data-air="target" data-sq="' + q.id + '">Cel nalotu</button>' : '') +
+        (q.phase === 'out' ? '<button class="btn btn-sm" data-air="recall" data-sq="' + q.id + '">Zawróć</button>' : '') +
+        (q.phase === 'idle' ? '<button class="btn btn-sm btn-ghost" data-air="disband" data-sq="' + q.id + '" title="Rozwiąż dywizjon">' + icon('x') + '</button>' : '') +
+        '</span></div>';
+    });
+    if (squads.length) h += '<label class="air-repeat"><input type="checkbox" id="air-repeat"' + (S.airRepeat ? ' checked' : '') + '> Powtarzaj naloty na ten sam cel</label>';
+    const can = WT.air.canBuildBombers(me(), id, S.planesN);
+    h += '<div class="slider-row" style="margin-top:6px"><input type="range" id="air-n" min="1" max="' + WT.air.MAX_BUILD + '" value="' + S.planesN + '"><span class="num" id="air-n-val">' + S.planesN + ' szt.</span></div>' +
+      '<div class="slider-row" style="margin-top:6px"><span class="dim">Koszt: <span class="num" id="air-cost">' + airCostText(S.planesN) + '</span></span>' +
+      '<button class="btn btn-sm btn-ok" id="air-go" style="margin-left:auto"' + (can.ok ? '' : ' disabled') + '>Zbuduj bombowce</button></div>' +
+      '<div class="reason" id="air-reason">' + (can.ok ? '' : esc(can.reason || '')) + '</div>' +
+      '<div class="hint">Zasięg ' + fmtInt(WT.air.RANGE_KM) + ' km. Bombowce niszczą rozwój i budynki prowincji wroga; działka plot. i radar wroga je zestrzeliwują.</div></div>';
+    return h;
+  }
+  function airCostText(n) { return isGod() ? '0 (God Mode)' : fmtNum(WT.air.planeCost(me(), n), 1) + ' mld $'; }
+  function bindAir(id) {
+    const panel = $('province-panel');
+    panel.querySelectorAll('[data-air]').forEach((b) => b.addEventListener('click', () => onAirAction(b.dataset.air, b.dataset.sq)));
+    const rep = $('air-repeat'); if (rep) rep.addEventListener('change', () => { S.airRepeat = rep.checked; });
+    const s = $('air-n'); if (!s) return;
+    s.addEventListener('input', () => {
+      S.planesN = +s.value;
+      $('air-n-val').textContent = S.planesN + ' szt.';
+      $('air-cost').textContent = airCostText(S.planesN);
+      const can = WT.air.canBuildBombers(me(), id, S.planesN);
+      $('air-go').disabled = !can.ok; $('air-reason').textContent = can.ok ? '' : (can.reason || '');
+    });
+    $('air-go').addEventListener('click', () => {
+      const sq = WT.air.buildBombers(me(), id, S.planesN);
+      if (sq) toast('Zbudowano ' + S.planesN + ' ' + plural(S.planesN, 'bombowiec', 'bombowce', 'bombowców'), 'ok', 2500);
+      else toast(WT.air.canBuildBombers(me(), id, S.planesN).reason || 'Nie można zbudować', 'bad');
+      refreshAll();
+    });
+  }
+  function onAirAction(act, sqId) {
+    if (act === 'target') startAirTarget(sqId);
+    else if (act === 'recall') { WT.air.recall(sqId); toast('Dywizjon zawraca do bazy', '', 2000); refreshAll(); }
+    else if (act === 'disband') confirmModal('Rozwiązanie dywizjonu', 'Rozwiązać dywizjon bombowców?', 'Rozwiąż', () => { WT.air.disband(sqId); refreshAll(); }, true);
+  }
+  function startAirTarget(sqId) {
+    const sq = (G().squadrons || {})[sqId]; if (!sq) return;
+    deselect(); closeOrderBar();
+    if (S.multi) exitMulti();
+    S.airSel = sqId;
+    const b = provStatic(sq.base);
+    R().view.airRange = { x: b.cx, y: b.cy, r: WT.air.RANGE_KM / (MAP().kmPerUnit || 4) };
+    if (isMobile()) $('province-panel').classList.add('sheet-collapsed');
+    updateCursor();
+    R().requestDraw();
+    toast((isTouch() ? 'Stuknij' : 'Kliknij') + ' prowincję wroga w zasięgu (okrąg), aby ją zbombardować. Esc = anuluj', '', 3500);
+  }
+  function stopAirTarget() {
+    S.airSel = null; R().view.airRange = null;
+    updateCursor(); R().requestDraw();
+  }
+  function doRaid(prov) {
+    if (prov < 0) { stopAirTarget(); return; }
+    const res = WT.air.orderRaid(S.airSel, prov, S.airRepeat);
+    if (!res.ok) { toast(res.reason, 'bad', 3000); return; }   // tryb celowania zostaje — można wskazać inny cel
+    stopAirTarget();
+    toast(res.reason, 'ok', 3000);
+    refreshAll();
+  }
+  /** Zasięg radaru wybranej własnej prowincji jako okrąg na mapie. */
+  function setRadarRing(id) {
+    const lvl = id >= 0 && WT.air ? ((provDyn(id).buildings || {}).radar || 0) : 0;
+    const p = id >= 0 ? provStatic(id) : null;
+    R().view.radarRing = lvl ? { x: p.cx, y: p.cy, r: WT.air.radarRangeKm(lvl) / (MAP().kmPerUnit || 4) } : null;
+    R().requestDraw();
+  }
+
+  // ===========================================================================
+  // Ranking państw
+  // ===========================================================================
+  const RANK_COLS = [
+    { key: 'area', label: 'Powierzchnia', unit: 'tys. km²', fmt: (v) => fmtInt(v / 1000) },
+    { key: 'provinces', label: 'Prowincje', fmt: fmtInt },
+    { key: 'pop', label: 'Ludność', unit: 'mln', fmt: (v) => fmtNum(v, 1) },
+    { key: 'gdp', label: 'PKB', unit: 'mld $', fmt: (v) => fmtInt(v) },
+    { key: 'income', label: 'Dochód', unit: 'mld $/tydz.', fmt: (v) => fmtNum(v, 2) },
+    { key: 'treasury', label: 'Skarbiec', unit: 'mld $', fmt: (v) => fmtNum(v, 1) },
+    { key: 'army', label: 'Armia', unit: 'tys.', fmt: (v) => fmtInt(v / 1000) },
+    { key: 'navy', label: 'Flota', unit: 'esk.', fmt: fmtInt },
+    { key: 'planes', label: 'Bombowce', fmt: fmtInt },
+    { key: 'power', label: 'Siła militarna', fmt: (v) => fmtInt(v / 1000) },
+    { key: 'tech', label: 'Technologia', fmt: (v) => fmtNum(v, 2) },
+    { key: 'stability', label: 'Stabilność', unit: '%', fmt: fmtInt }
+  ];
+  function rankingRows() {
+    return aliveCountries().map((cc) => {
+      const c = liveCountry(cc) || {}, provs = provincesOf(cc);
+      const army = armiesOf(cc).reduce((s, a) => s + a.size, 0);
+      const navy = Object.values(G().fleets || {}).filter((f) => f.owner === cc).reduce((s, f) => s + f.ships, 0);
+      const planes = WT.air ? WT.air.planesOf(cc) : 0;
+      return {
+        cc, area: provs.reduce((s, id) => s + (provStatic(id).areaKm2 || 0), 0), provinces: provs.length,
+        pop: provs.reduce((s, id) => s + (provStatic(id).pop || 0), 0), gdp: call('economy.countryGdp', [cc], 0) || 0,
+        income: (call('economy.income', [cc], { total: 0 }) || { total: 0 }).total, treasury: c.treasury || 0,
+        army, navy, planes, tech: c.tech || 0, stability: c.stability || 0,
+        // siła militarna: wojsko × technologia + flota i lotnictwo przeliczone na ekwiwalent żołnierzy
+        power: (army + navy * 8000 + planes * 3000) * (c.tech || 1)
+      };
+    });
+  }
+  function openRanking() {
+    if (!S.inGame || !G()) return;
+    S.rankSort = S.rankSort || { key: 'gdp', dir: -1 };
+    openModal({ title: icon('trophy') + ' Ranking państw', wide: true, body: '<div class="rank-wrap" id="rank-wrap"></div>', onOpen: (el) => renderRanking(el) });
+  }
+  function renderRanking(el) {
+    const { key, dir } = S.rankSort, rows = rankingRows();
+    rows.sort((a, b) => (a[key] - b[key]) * dir || countryName(a.cc).localeCompare(countryName(b.cc), 'pl'));
+    const place = {}; RANK_COLS.forEach((c) => { rows.slice().sort((a, b) => b[c.key] - a[c.key]).forEach((r, i) => { (place[r.cc] = place[r.cc] || {})[c.key] = i + 1; }); });
+    let h = '<table class="rank-table"><thead><tr><th class="rk-n">#</th><th class="rk-name">Państwo</th>';
+    RANK_COLS.forEach((c) => {
+      h += '<th data-sort="' + c.key + '" class="' + (c.key === key ? 'sorted' : '') + '">' + c.label + (c.unit ? '<small>' + c.unit + '</small>' : '') + (c.key === key ? (dir < 0 ? ' ▾' : ' ▴') : '') + '</th>';
+    });
+    h += '</tr></thead><tbody>';
+    rows.forEach((r, i) => {
+      h += '<tr class="' + (r.cc === me() ? 'me' : '') + '" data-cc="' + r.cc + '"><td class="rk-n">' + (i + 1) + '</td><td class="rk-name">' + swatch(r.cc) + esc(countryName(r.cc)) + '</td>';
+      RANK_COLS.forEach((c) => { const top = place[r.cc][c.key] <= 3; h += '<td class="num' + (c.key === key ? ' sorted' : '') + (top ? ' top' : '') + '">' + c.fmt(r[c.key]) + '</td>'; });
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+    const wrap = el.querySelector('#rank-wrap'), meRow = rows.findIndex((r) => r.cc === me());
+    wrap.innerHTML = '<div class="hint">Twoje miejsce (' + esc(RANK_COLS.find((c) => c.key === key).label) + '): <b>' + (meRow + 1) + ' / ' + rows.length + '</b>. Kliknij nagłówek, aby sortować; wiersz — dyplomacja z państwem.</div>' + h;
+    wrap.querySelectorAll('th[data-sort]').forEach((th) => th.addEventListener('click', () => {
+      const k = th.dataset.sort;
+      S.rankSort = { key: k, dir: S.rankSort.key === k ? -S.rankSort.dir : -1 };
+      renderRanking(el);
+    }));
+    wrap.querySelectorAll('tr[data-cc]').forEach((tr) => tr.addEventListener('click', () => {
+      if (tr.dataset.cc === me()) return;
+      closeTopModal(); openDiplomacy(tr.dataset.cc);
+    }));
+  }
+  UI.openRanking = openRanking;
+
+  // ===========================================================================
   // Zaznaczanie wielu prowincji i masowa budowa
   // ===========================================================================
   function startMulti(initial) {
@@ -1570,6 +1754,7 @@
   function onUnitClick(u, shift) {
     if (!S.inGame) return;
     if (S.godTool) { applyGodTool(u.prov); return; }
+    if (S.airSel) { doRaid(u.prov); return; }
     if (S.multi || shift) { toggleMulti(u.prov); return; }
     if (u.type === 'army' && u.owner === me() && !(S.sel && S.sel.id === u.id)) {
       const lead = primaryArmyAt(u.prov);
@@ -1583,6 +1768,7 @@
   function onMapClick(prov, ev) {
     if (!S.inGame) { if (prov >= 0) selectStartCountry(R().ownerOf(prov), false); return; }
     if (S.godTool) { applyGodTool(prov); return; }
+    if (S.airSel) { doRaid(prov); return; }
     // Shift/Ctrl+klik albo aktywny tryb zaznaczania: dodaj/usuń prowincję z zaznaczenia wielu
     const additive = ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey);
     if (S.multi || (additive && prov >= 0)) {
@@ -1617,6 +1803,7 @@
     if (!S.inGame) { onMapClick(prov); return; }
     if (S.godTool) { applyGodTool(unit ? unit.prov : prov); return; }
     if (S.multi) { toggleMulti(unit ? unit.prov : prov); return; }
+    if (S.airSel) { doRaid(unit ? unit.prov : prov); return; }
     const selU = unitObj(S.sel);
     if (unit) {
       if (unit.owner === me() || !selU || selU.owner !== me()) { onUnitClick(unit); return; }
@@ -1690,17 +1877,32 @@
         st.dy = e.clientY - st.y0;
         el.style.transform = 'translateY(' + Math.max(-60, st.dy) + 'px)';
       });
+      // Gest na uchwycie zmienia układ arkusza — kliknięcie syntetyzowane po nim trafiłoby w przycisk,
+      // który właśnie pojawił się pod palcem. Połykamy jedno takie kliknięcie (ok. 500 ms).
+      let swallowUntil = 0;
+      el.addEventListener('click', (e) => {
+        if (performance.now() > swallowUntil) return;
+        swallowUntil = 0;
+        e.preventDefault(); e.stopPropagation();
+      }, true);
       const end = (e) => {
         if (!st || e.pointerId !== st.id) return;
         const dy = st.dy, v = dy / Math.max(1, performance.now() - st.t0);
         st = null;
+        swallowUntil = performance.now() + 500;
         el.classList.remove('sheet-dragging');
         el.style.transform = '';
         const collapsed = el.classList.contains('sheet-collapsed'), expanded = el.classList.contains('sheet-expanded');
         if (Math.abs(dy) < 8) { el.classList.toggle('sheet-collapsed', !collapsed); el.classList.remove('sheet-expanded'); return; }
         if (dy > 70 || v > 0.5) {
           if (expanded) el.classList.remove('sheet-expanded');
-          else { const c = el.querySelector('[data-act=close]'); if (c) c.click(); el.classList.remove('sheet-collapsed'); }
+          else {
+            const c = el.querySelector('[data-act=close]');
+            swallowUntil = 0;   // to kliknięcie zamyka arkusz celowo — nie połykać
+            if (c) c.click();
+            swallowUntil = performance.now() + 500;
+            el.classList.remove('sheet-collapsed');
+          }
         } else if (dy < -40 || v < -0.5) {
           if (collapsed) el.classList.remove('sheet-collapsed'); else el.classList.add('sheet-expanded');
         }
@@ -1724,6 +1926,7 @@
     if (closeTopModal()) return;
     if (!$('menu').classList.contains('hidden')) { toggleMenu(false); return; }
     if (orderBarOpen()) { closeOrderBar(); R().requestDraw(); return; }
+    if (S.airSel) { stopAirTarget(); return; }
     if (S.multi) { exitMulti(); return; }
     if (S.godTool) { S.godTool = null; updateCursor(); if (!$('god-panel').classList.contains('hidden')) renderGodPanel(); return; }
     if (S.sel) { deselect(); return; }

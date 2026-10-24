@@ -93,10 +93,11 @@ WT.naval = (function () {
     if (!fleet) return { ok: false, reason: 'Brak własnej floty w prowincji ' + S.provStatic(army.prov).name + '.' };
     var path = seaPath(army.prov, destProv);
     if (!path) return { ok: false, reason: 'Brak drogi morskiej do celu.' };
-    var amount = Math.round(size && size < army.size ? size : army.size), cap = freeCapacity(fleet);
+    var cap = freeCapacity(fleet);
+    var amount = Math.round(size && size < army.size - Mil().MIN_REMAINDER ? size : army.size);
     if (amount > cap) return { ok: false, reason: 'Flota pomieści maks. ' + U.fmtK(cap) + ' żołnierzy (1 eskadra = 10k).' };
-    var mover = amount < army.size ? Mil().split(army, amount) : army;
-    if (!mover) return { ok: false, reason: 'Za mały oddział do podziału.' };
+    var mover = Mil().splitForOrder(army, amount);
+    if (!mover) return { ok: false, reason: 'Wyślij co najmniej ' + Mil().MIN_ARMY + ' żołnierzy.' };
     embark(mover, fleet);
     fleet.path = path; fleet.landAt = destProv; fleet.home = army.prov;
     return { ok: true, reason: 'Desant: ' + U.fmtK(mover.size) + ', ok. ' + seaTurns(path) + ' tur.', armyId: mover.id, fleetId: fleet.id, turns: seaTurns(path) };

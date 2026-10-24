@@ -14,6 +14,7 @@ WT.economy = (function () {
   var OCCUPIER_SHARE = 0.3;
   var AID_SHARE = 0.015;
   var FACTORY_BONUS = 0.15, PORT_BONUS = 0.05;
+  var BOMBED_INCOME = 0.5;            // prowincja po nalocie (licznik `bombed`) daje połowę dochodu
   var MANPOWER_REGEN = 0.2;           // tys./tydz. na 1 mln mieszkańców (0.02% populacji)
   var MANPOWER_CAP = 25;              // tys. na 1 mln (2.5% populacji)
   var TAX_MIN = 0.05, TAX_MAX = 0.40;
@@ -22,7 +23,9 @@ WT.economy = (function () {
     factory:  { name: 'Fabryka', cost: 1.0, rate: 0.02,  turns: 6, max: 5, desc: '+15% dochodu prowincji' },
     fort:     { name: 'Fort',    cost: 1.5, rate: 0.006, turns: 4, max: 5, desc: '+25% obrony, oblężenie 1 tura/poziom' },
     port:     { name: 'Port',    cost: 1.0, rate: 0.005, turns: 4, max: 3, desc: 'budowa okrętów, +5% dochodu' },
-    barracks: { name: 'Koszary', cost: 0.8, rate: 0.004, turns: 3, max: 3, desc: '+25% rezerw, -10% kosztu rekrutacji' }
+    barracks: { name: 'Koszary', cost: 0.8, rate: 0.004, turns: 3, max: 3, desc: '+25% rezerw, -10% kosztu rekrutacji' },
+    aa:       { name: 'Działka plot.', cost: 1.2, rate: 0.004, turns: 3, max: 5, desc: 'zestrzeliwują bombowce (12%/poziom, maks. 75%), pomagają sąsiednim prowincjom' },
+    radar:    { name: 'Radar',   cost: 1.5, rate: 0.003, turns: 4, max: 3, desc: 'wykrywa lecące bombowce (350 km +200 km/poziom), +35% skuteczności działek' }
   };
 
   function G() { return WT.G; }
@@ -66,7 +69,7 @@ WT.economy = (function () {
     for (i = 0; i < own.length; i++) {
       var p = G().provinces[own[i]];
       if (p.ctrl !== cc) continue;     // okupowana prowincja nic nie daje właścicielowi
-      var base = provGdp(own[i]) * c.taxRate / WEEKS * mod;
+      var base = provGdp(own[i]) * c.taxRate / WEEKS * mod * (p.bombed > 0 ? BOMBED_INCOME : 1);
       res.tax += base;
       res.factories += base * (FACTORY_BONUS * p.buildings.factory + PORT_BONUS * p.buildings.port);
     }
@@ -112,7 +115,7 @@ WT.economy = (function () {
   function buildingLevels(cc) {
     return S.provincesOf(cc).reduce(function (s, id) {
       var b = G().provinces[id].buildings;
-      return s + b.factory + b.fort + b.port + b.barracks;
+      return s + Object.keys(BUILDINGS).reduce(function (t, k) { return t + (b[k] || 0); }, 0);
     }, 0);
   }
 
@@ -122,9 +125,10 @@ WT.economy = (function () {
       army: armySoldiers(cc) / 1000 * ARMY_UPKEEP_PER_K * scale,
       navy: navyShips(cc) * NAVY_UPKEEP * scale,
       buildings: buildingLevels(cc) * BUILDING_UPKEEP,
-      admin: countryGdp(cc) * ADMIN_RATE / WEEKS
+      admin: countryGdp(cc) * ADMIN_RATE / WEEKS,
+      air: WT.air ? WT.air.upkeep(cc) : 0
     };
-    res.total = res.army + res.navy + res.buildings + res.admin;
+    res.total = res.army + res.navy + res.buildings + res.admin + res.air;
     return res;
   }
 
@@ -155,7 +159,7 @@ WT.economy = (function () {
     if (p.ctrl !== cc) return { ok: false, reason: 'Prowincja jest okupowana.' };
     var inProgress = buildsOf(p)[type];
     if (inProgress) return { ok: false, reason: b.name + ': budowa już trwa (' + inProgress + ' t.).' };
-    if (p.buildings[type] >= b.max) return { ok: false, reason: b.name + ': osiągnięto maksymalny poziom (' + b.max + ').' };
+    if ((p.buildings[type] || 0) >= b.max) return { ok: false, reason: b.name + ': osiągnięto maksymalny poziom (' + b.max + ').' };
     if (type === 'port' && !S.provStatic(provId).coastal) return { ok: false, reason: 'Port wymaga prowincji nadmorskiej.' };
     var cost = buildCost(cc, provId, type);
     if (!canAfford(cc, cost)) return { ok: false, reason: 'Brak środków: potrzeba ' + U.fmtMoney(cost) + '.' };

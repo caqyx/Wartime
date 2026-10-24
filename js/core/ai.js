@@ -32,6 +32,7 @@ WT.ai = (function () {
       if (staggered(i, AID_CHECK_EVERY)) manageAid(cc, ctx);
       manageArmies(cc, ctx, i);
       manageFleets(cc, ctx, i);
+      if (staggered(i, AIR_CHECK_EVERY)) manageAir(cc);
     });
   }
 
@@ -126,13 +127,62 @@ WT.ai = (function () {
     var best = -1, bestGdp = 0;
     S.provincesOf(cc).forEach(function (id) {
       var p = G().provinces[id];
-      if (p.build || p.ctrl !== cc || p.buildings.factory >= 5) return;
+      if ((p.builds && p.builds.factory) || p.ctrl !== cc || p.buildings.factory >= 5) return;
       var g = E().provGdp(id) / (1 + p.buildings.factory);
       if (g > bestGdp) { bestGdp = g; best = id; }
     });
     if (best < 0) return null;
-    if (c.capital >= 0 && G().provinces[c.capital].buildings.barracks < 1 && !G().provinces[c.capital].build && U.chance(0.2)) return { prov: c.capital, type: 'barracks' };
+    if (c.capital >= 0 && G().provinces[c.capital].buildings.barracks < 1 && !(G().provinces[c.capital].builds || {}).barracks && U.chance(0.2)) return { prov: c.capital, type: 'barracks' };
     return { prov: best, type: 'factory' };
+  }
+
+  // =====================================================================
+  // Lotnictwo: obrona przed bombowcami wroga, budowa bombowców, naloty na najbogatsze prowincje
+  // =====================================================================
+
+  var AIR_CHECK_EVERY = 2, AIR_MIN_GDP = 150, AIR_GDP_PER_PLANE = 250, AIR_MAX_PLANES = 40;
+
+  function manageAir(cc) {
+    var enemies = D().enemiesOf(cc);
+    if (!enemies.length || !WT.air) return;
+    var c = S.country(cc);
+    defendAgainstBombers(cc, c, enemies);
+    var gdp = E().countryGdp(cc);
+    if (gdp < AIR_MIN_GDP) return;
+    buildAirForce(cc, c, gdp);
+    WT.air.squadronsOf(cc).forEach(function (sq) { if (sq.phase === 'idle' && sq.planes >= 2) launchRaid(sq, enemies); });
+  }
+
+  function defendAgainstBombers(cc, c, enemies) {
+    var threat = enemies.some(function (e) { return WT.air.planesOf(e) > 0; });
+    var cap = c.capital;
+    if (!threat || cap < 0 || G().provinces[cap].ctrl !== cc) return;
+    var b = G().provinces[cap].buildings;
+    var type = (b.aa || 0) < 2 ? 'aa' : (b.radar || 0) < 1 ? 'radar' : (b.aa || 0) < 4 ? 'aa' : null;
+    if (!type || !E().canBuild(cc, cap, type).ok) return;
+    if (c.treasury - E().buildCost(cc, cap, type) > reserveFor(c)) E().build(cc, cap, type);
+  }
+
+  function buildAirForce(cc, c, gdp) {
+    var target = Math.min(AIR_MAX_PLANES, Math.floor(gdp / AIR_GDP_PER_PLANE)), have = WT.air.planesOf(cc);
+    var cap = c.capital;
+    if (have >= target || cap < 0 || G().provinces[cap].ctrl !== cc) return;
+    var n = Math.min(5, target - have);
+    if (c.treasury - WT.air.planeCost(cc, n) > 2 * reserveFor(c)) WT.air.buildBombers(cc, cap, n);
+  }
+
+  /** Cel: wroga prowincja w zasięgu o największym PKB, z uwzględnieniem jej działek. */
+  function launchRaid(sq, enemies) {
+    var best = -1, bestScore = 0;
+    enemies.forEach(function (e) {
+      S.controlledBy(e).forEach(function (id) {
+        if (S.dist(sq.base, id) > WT.air.RANGE_KM) return;
+        var aa = G().provinces[id].buildings.aa || 0;
+        var score = E().provGdp(id) * (1 - Math.min(WT.air.MAX_INTERCEPT, 1 - Math.pow(0.88, aa)));
+        if (score > bestScore) { bestScore = score; best = id; }
+      });
+    });
+    if (best >= 0) WT.air.orderRaid(sq.id, best, false);
   }
 
   // =====================================================================

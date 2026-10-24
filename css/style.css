@@ -785,3 +785,33 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
   .spinner { animation: spin 1.6s linear infinite !important; }
 }
+
+/* ---------- Lotnictwo (panel prowincji) ---------- */
+.air-row { display: flex; align-items: center; gap: var(--s-2); padding: 6px 0; border-bottom: 1px solid var(--stroke-1); }
+.air-row:last-of-type { border-bottom: 0; }
+.air-ico { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: var(--r-sm); background: oklch(80% 0.12 60 / 0.14); color: oklch(85% 0.12 65); flex: none; }
+.air-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.air-txt .dim { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.air-btns { display: flex; gap: 4px; flex: none; }
+.air-repeat { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: var(--fs-sm); color: var(--text-2); cursor: pointer; }
+
+/* ---------- Ranking państw ---------- */
+.modal.wide:has(.rank-wrap) { width: min(1180px, calc(100vw - 32px)); max-width: none; }
+.rank-wrap { max-height: min(68vh, 640px); overflow: auto; margin-top: var(--s-2); -webkit-overflow-scrolling: touch; }
+.rank-wrap > .hint { margin-bottom: var(--s-2); }
+.rank-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-sm); }
+.rank-table th, .rank-table td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--stroke-1); }
+.rank-table th { position: sticky; top: 0; z-index: 1; background: var(--bg-2); color: var(--text-3); font-weight: 600; cursor: pointer; user-select: none; vertical-align: bottom; }
+.rank-table th small { display: block; font-weight: 400; font-size: 10px; color: var(--text-dim); }
+.rank-table th:hover, .rank-table th.sorted { color: var(--acc-200); }
+.rank-table .rk-n { text-align: right; color: var(--text-3); width: 1%; }
+.rank-table .rk-name { text-align: left; position: sticky; left: 0; background: var(--bg-2); z-index: 1; }
+.rank-table th.rk-name { z-index: 2; }
+.rank-table .rk-name .swatch { margin-right: 8px; vertical-align: -1px; }
+.rank-table td.num { font-variant-numeric: tabular-nums; }
+.rank-table td.sorted { color: var(--text-1); font-weight: 600; background: oklch(84% 0.14 205 / 0.06); }
+.rank-table td.top { color: var(--acc-200); }
+.rank-table tbody tr { cursor: pointer; }
+.rank-table tbody tr:hover td { background: var(--glass-fill-hover); }
+.rank-table tr.me td { background: oklch(84% 0.14 205 / 0.12); }
+.rank-table tr.me .rk-name { box-shadow: inset 3px 0 0 var(--acc-400); }

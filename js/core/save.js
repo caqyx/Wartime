@@ -51,7 +51,10 @@ WT.save = (function () {
 
   // Zapisy sprzed budów równoległych: pojedynczy slot `build` → mapa `builds`.
   function migrateBuilds(g) {
+    if (!g.squadrons) g.squadrons = {};   // zapisy sprzed lotnictwa
     g.provinces.forEach(function (p) {
+      if (p.buildings.aa == null) p.buildings.aa = 0;
+      if (p.buildings.radar == null) p.buildings.radar = 0;
       if (!p.builds) p.builds = {};
       if (p.build) { p.builds[p.build.type] = p.build.turnsLeft; delete p.build; }
     });

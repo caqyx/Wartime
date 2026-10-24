@@ -1,7 +1,7 @@
 /* Testy logiki gry w node (bez frameworków): `node tests/run_tests.js` */
 var path = require('path');
 var ROOT = path.join(__dirname, '..');
-var CORE = ['util', 'state', 'economy', 'diplomacy', 'military', 'naval', 'ai', 'god', 'turn', 'save'];
+var CORE = ['util', 'state', 'economy', 'diplomacy', 'military', 'naval', 'air', 'ai', 'god', 'turn', 'save'];
 CORE.forEach(function (m) { require(path.join(ROOT, 'js/core', m + '.js')); });
 var WT = global.WT;
 var mock = require('./mock_map.js');
@@ -499,6 +499,92 @@ test('bitwa morska: flota wroga atakowana w węźle', function () {
   WT.naval.orderFleet(cf.id, bf.prov);
   for (var i = 0; i < 3 && !res; i++) WT.naval.moveFleets();
   assert(res, 'doszło do bitwy morskiej');
+});
+
+test('rozkaz armii: bez drobnych resztek, całość gdy reszta < 1000', function () {
+  freshGame();
+  clearArmies();
+  var from = cellProv(0, 0), to = cellProv(0, 1);
+  var a = WT.state.createArmy('AAA', from, 108400);
+  var r = WT.military.order(a.id, to, 108000);
+  assert(r.ok, 'rozkaz przyjęty');
+  eq(r.armyId, a.id, 'wysłana cała armia, nie podzielona');
+  eq(WT.state.armiesIn(from).filter(function (x) { return x.owner === 'AAA'; }).length, 1, 'jedna armia');
+  var b = WT.state.createArmy('AAA', cellProv(1, 0), 50000);
+  var r2 = WT.military.order(b.id, cellProv(1, 1), 20000);
+  assert(r2.ok && r2.armyId !== b.id && b.size === 30000, 'zwykły podział dalej działa');
+  var c = WT.state.createArmy('AAA', cellProv(1, 2), 10000);
+  var r3 = WT.military.order(c.id, cellProv(1, 1), 100);
+  eq(r3.ok, false, 'za mały oddział odrzucony');
+  assert(/co najmniej/.test(r3.reason), 'czytelny powód');
+});
+
+function cellProv(c, r) { return MAP_DATA.provinces.findIndex(function (p) { return p.c === c && p.r === r; }); }
+
+test('lotnictwo: budowa, nalot niszczy gospodarkę, powrót do bazy', function () {
+  freshGame();
+  var c = G().countries.AAA, base = cellProv(0, 3), target = cellProv(3, 3);
+  c.treasury = 1000;
+  eq(WT.air.canBuildBombers('AAA', cellProv(3, 3), 5).ok, false, 'nie na cudzej prowincji');
+  var sq = WT.air.buildBombers('AAA', base, 10);
+  assert(sq && sq.planes === 10, 'dywizjon 10 bombowców');
+  WT.air.buildBombers('AAA', base, 5);
+  eq(WT.air.squadronsOf('AAA').length, 1, 'dokupione bombowce dołączają do dywizjonu');
+  assert(WT.economy.expenses('AAA').air > 0, 'utrzymanie lotnictwa w wydatkach');
+  eq(WT.air.orderRaid(sq.id, target).ok, false, 'bez wojny nie można bombardować');
+  WT.diplomacy.startWar(['AAA'], ['CCC'], true);
+  var p = G().provinces[target], dev0 = p.dev, inc0 = WT.economy.income('CCC').total;
+  var r = WT.air.orderRaid(sq.id, target);
+  assert(r.ok, 'nalot zlecony: ' + r.reason);
+  WT.air.processTurn();
+  eq(p.dev, dev0, 'pierwsza tura: dolot, jeszcze bez zrzutu');
+  WT.air.processTurn();
+  assert(p.dev < dev0, 'rozwój spadł po nalocie');
+  assert(p.bombed > 0 && WT.economy.income('CCC').total < inc0, 'dochód prowincji zakłócony');
+  eq(sq.phase, 'back', 'wraca do bazy');
+  for (var i = 0; i < 3; i++) WT.air.processTurn();
+  eq(sq.phase, 'idle', 'w bazie');
+  G().squadrons[sq.id].base = base;
+  var save = JSON.parse(JSON.stringify(G())); delete save.squadrons;
+  save.provinces.forEach(function (q) { delete q.buildings.aa; delete q.buildings.radar; });
+  WT.save.importJSON(JSON.stringify(save));
+  assert(G().squadrons && G().provinces[0].buildings.aa === 0, 'stary zapis zmigrowany (lotnictwo, działka, radar)');
+});
+
+test('lotnictwo: działka zestrzeliwują część, nigdy nie gwarantują 100%, radar wykrywa', function () {
+  freshGame();
+  var target = cellProv(3, 3);
+  WT.diplomacy.startWar(['CCC'], ['AAA'], true);
+  G().provinces[target].buildings.aa = 0;
+  eq(WT.air.interceptChance(target, 'AAA'), 0, 'bez działek brak zestrzeleń');
+  G().provinces[target].buildings.aa = 5;
+  G().provinces[cellProv(2, 3)].buildings.aa = 5;
+  G().provinces[target].buildings.radar = 3;
+  var ch = WT.air.interceptChance(target, 'AAA');
+  assert(ch > 0.5 && ch <= WT.air.MAX_INTERCEPT, 'wysoka, ale ograniczona skuteczność: ' + ch.toFixed(2));
+  var total = 0, shot = 0;
+  for (var k = 0; k < 20; k++) {
+    var sq = WT.air.buildBombers('AAA', cellProv(0, 3), 10) || null;
+    G().countries.AAA.treasury = 1000;
+    if (!sq) { sq = WT.air.buildBombers('AAA', cellProv(0, 3), 10); }
+    sq.target = target; sq.phase = 'out';
+    var rep = WT.air.bombProvince(sq);
+    total += rep.planes; shot += rep.shot;
+    WT.air.squadronsOf('AAA').forEach(function (q) { WT.air.disband(q.id); });
+  }
+  assert(shot > 0 && shot < total, 'część zestrzelona, część przelatuje (' + shot + '/' + total + ')');
+  // radar gracza (AAA) wykrywa lecący dywizjon wroga (CCC)
+  G().countries.CCC.treasury = 1000;
+  G().provinces[cellProv(1, 3)].buildings.radar = 2;
+  var enemy = WT.air.buildBombers('CCC', cellProv(4, 3), 8);
+  var logs = [];
+  WT.events.on('radar', function (e) { logs.push(e); });
+  eq(WT.air.visibleFor('AAA').indexOf(enemy), -1, 'wróg w bazie niewidoczny');
+  assert(WT.air.orderRaid(enemy.id, cellProv(0, 3)).ok, 'wrogi nalot');
+  WT.air.processTurn();
+  assert(logs.length === 1, 'radar zgłosił nalot przed zrzutem');
+  assert(WT.air.visibleFor('AAA').indexOf(enemy) >= 0, 'lecący wróg widoczny na mapie w zasięgu radaru');
+  eq(enemy.phase, 'out', 'jeszcze nie zbombardował');
 });
 
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {

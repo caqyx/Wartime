@@ -44,7 +44,7 @@ WT.state = (function () {
       version: 1, turn: 0, date: START_DATE,
       player: opts.player, god: !!opts.god,
       seed: seed, rngState: seed,
-      countries: {}, provinces: [], armies: {}, fleets: {},
+      countries: {}, provinces: [], armies: {}, fleets: {}, squadrons: {},
       nextId: 100, rel: {}, wars: [], alliances: [], pacts: [], truces: [],
       proposals: [], log: [], gameOver: false
     };
@@ -55,7 +55,7 @@ WT.state = (function () {
     for (var i = 0; i < provs.length; i++) {
       g.provinces.push({
         owner: provs[i].cc, ctrl: provs[i].cc,
-        buildings: { factory: 0, fort: 0, port: 0, barracks: 0 },
+        buildings: { factory: 0, fort: 0, port: 0, barracks: 0, aa: 0, radar: 0 },
         builds: {}, unrest: 0, dev: 1.0, gdp: 0, siege: null
       });
     }

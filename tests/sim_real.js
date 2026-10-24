@@ -8,7 +8,7 @@ function loadDataFile(rel) {
 }
 loadDataFile('data/map.js');
 loadDataFile('data/countries.js');
-['util', 'state', 'economy', 'diplomacy', 'military', 'naval', 'ai', 'god', 'turn', 'save'].forEach(function (m) {
+['util', 'state', 'economy', 'diplomacy', 'military', 'naval', 'air', 'ai', 'god', 'turn', 'save'].forEach(function (m) {
   require(path.join(ROOT, 'js/core', m + '.js'));
 });
 var WT = global.WT, S = WT.state;

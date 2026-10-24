@@ -56,7 +56,7 @@
 
   // Stan interakcji ustawiany przez WT.ui
   var view = {
-    hoverProv: -1, selProv: -1, multi: null,
+    hoverProv: -1, selProv: -1, multi: null, airRange: null, radarRing: null,
     sel: null,                     // { type: 'army'|'fleet', id }
     preview: null,                 // plan trasy (podgląd)
     pending: null,                 // plan czekający na potwierdzenie w pasku rozkazu
@@ -1030,6 +1030,73 @@
     ctx.fillRect(cx - 0.9, cy - 4.5, 1.4, 2.2);
   }
 
+  // ---------------------------------------------------------------------------
+  // Lotnictwo: zasięgi (nalot, radar), dywizjony w bazach i w locie
+  // ---------------------------------------------------------------------------
+  function drawRangeCircle(c, rgb, dashed) {
+    var s = mapToScreen(c.x, c.y), r = c.r * cam.zoom;
+    ctx.beginPath(); ctx.arc(s[0], s[1], r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(' + rgb + ',0.10)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(4,8,14,0.55)'; ctx.lineWidth = 4; ctx.stroke();   // ciemna obwódka — czytelność na jasnych państwach
+    ctx.setLineDash(dashed ? [10, 6] : []);
+    ctx.strokeStyle = 'rgba(' + rgb + ',0.95)'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  function drawAir() {
+    var g = G(); if (!g || !g.squadrons || !WT.air || view.startScreen) return;
+    applyScreenTransform();
+    if (view.radarRing) drawRangeCircle(view.radarRing, '120,220,160', true);
+    if (view.airRange) drawRangeCircle(view.airRange, '255,170,80', true);
+    var me = g.player, list = WT.air.visibleFor(me), atBase = {};
+    ctx.font = CHIP_FONT; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    list.forEach(function (sq) {
+      if (sq.phase === 'idle') { (atBase[sq.base] || (atBase[sq.base] = [])).push(sq); return; }
+      drawFlyingSquad(sq, sq.owner === me);
+    });
+    Object.keys(atBase).forEach(function (pid) {
+      var p = MAP.provinces[pid], s = mapToScreen(p.cx, p.cy);
+      if (s[0] < -60 || s[0] > viewW + 60 || s[1] < -40 || s[1] > viewH + 40) return;
+      atBase[pid].forEach(function (sq, i) { drawPlaneChip(sq, s[0] - 18, s[1] + 14 + i * 22); });
+    });
+  }
+  function drawPlaneChip(sq, x, y) {
+    var color = countryColor(sq.owner), label = String(sq.planes);
+    var tw = ctx.measureText(label).width, h = 19, w = Math.ceil(30 + tw);
+    drawPill(x, y, w, h, 'rgba(10,20,34,0.94)', 'rgba(255,170,80,0.9)', 1.3);
+    ctx.beginPath(); ctx.arc(x + h / 2, y + h / 2, h / 2 - 2.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+    drawPlaneGlyph(x + h / 2, y + h / 2, -Math.PI / 2, luminance(color) > 0.6 ? '#0b1118' : '#ffffff', 0.8);
+    ctx.fillStyle = '#eef6fb'; ctx.fillText(label, x + h + 4, y + h / 2 + 0.5);
+  }
+  function drawFlyingSquad(sq, mine) {
+    var s = mapToScreen(sq.x, sq.y);
+    var tp = sq.phase === 'out' ? MAP.provinces[sq.target] : MAP.provinces[sq.base];
+    var t = mapToScreen(tp.cx, tp.cy), ang = Math.atan2(t[1] - s[1], t[0] - s[0]);
+    var rgb = mine ? COLORS.accentRgb : '255,107,107';
+    // linia lotu do celu (wróg widoczny tylko w zasięgu radaru)
+    ctx.setLineDash([6, 5]); ctx.lineDashOffset = -dashPhase;
+    ctx.beginPath(); ctx.moveTo(s[0], s[1]); ctx.lineTo(t[0], t[1]);
+    ctx.strokeStyle = 'rgba(' + rgb + ',0.8)'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    if (sq.phase === 'out') { ctx.beginPath(); ctx.arc(t[0], t[1], 9, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(' + rgb + ',0.9)'; ctx.lineWidth = 2; ctx.stroke(); }
+    if (!mine) { ctx.beginPath(); ctx.arc(s[0], s[1], 15, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,107,107,0.18)'; ctx.fill(); }
+    ctx.beginPath(); ctx.arc(s[0], s[1], 10, 0, Math.PI * 2);
+    ctx.fillStyle = countryColor(sq.owner); ctx.fill();
+    ctx.strokeStyle = 'rgba(' + rgb + ',0.95)'; ctx.lineWidth = 1.6; ctx.stroke();
+    drawPlaneGlyph(s[0], s[1], ang, luminance(countryColor(sq.owner)) > 0.6 ? '#0b1118' : '#ffffff', 1);
+    ctx.fillStyle = '#eef6fb'; ctx.strokeStyle = 'rgba(4,8,14,0.85)'; ctx.lineWidth = 3;
+    ctx.strokeText(String(sq.planes), s[0] + 13, s[1] - 8); ctx.fillText(String(sq.planes), s[0] + 13, s[1] - 8);
+  }
+  function drawPlaneGlyph(cx, cy, ang, color, k) {   // sylwetka samolotu skierowana pod kątem `ang`
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(ang); ctx.scale(k, k);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(7, 0); ctx.lineTo(1, -1.4); ctx.lineTo(-1, -6.5); ctx.lineTo(-3, -6.5); ctx.lineTo(-2, -1.4);
+    ctx.lineTo(-5.5, -1.2); ctx.lineTo(-7, -3.5); ctx.lineTo(-8, -3.5); ctx.lineTo(-7, 0);
+    ctx.lineTo(-8, 3.5); ctx.lineTo(-7, 3.5); ctx.lineTo(-5.5, 1.2); ctx.lineTo(-2, 1.4); ctx.lineTo(-3, 6.5);
+    ctx.lineTo(-1, 6.5); ctx.lineTo(1, 1.4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
   // Duch przeciąganej jednostki przy kursorze
   function drawDragGhost() {
     if (!pointer.dragUnit || !pointer.moved) return;
@@ -1046,7 +1113,12 @@
   // Pętla klatek
   // ---------------------------------------------------------------------------
   // animowany przesuw kresek tylko dla planowanej trasy i trasy zaznaczonej jednostki (zaznaczenie prowincji jest statyczne)
-  function hasAnimation() { return !!(view.preview || view.pending || selHasRoute()); }
+  function hasAnimation() { return !!(view.preview || view.pending || selHasRoute() || airborne()); }
+  function airborne() {
+    var g = G(); if (!g || !g.squadrons) return false;
+    for (var id in g.squadrons) if (g.squadrons[id].owner === g.player && g.squadrons[id].phase !== 'idle') return true;
+    return false;
+  }
   function selHasRoute() {
     var g = G(), s = view.sel; if (!g || !s) return false;
     var u = s.type === 'army' ? g.armies[s.id] : (g.fleets || {})[s.id];
@@ -1086,6 +1158,7 @@
     drawRoutes();
     drawArmies();
     drawFleets();
+    drawAir();
     drawDragGhost();
   }
   var fps = { frames: 0, t0: 0, value: 0 };

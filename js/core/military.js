@@ -6,6 +6,7 @@ WT.military = (function () {
 
   var MOVE_POINTS = 2;
   var MIN_ARMY = 200;                       // mniejsze resztki armii są rozwiązywane
+  var MIN_REMAINDER = 1000;                 // rozkaz nie zostawia w prowincji mniejszej resztki — wysyła całość
   var TERRAIN_COST = { mountains: 1, jungle: 1 };
   var TERRAIN_DEFENSE = { hills: 0.15, mountains: 0.35, forest: 0.1, jungle: 0.2 };
   var TERRAIN_PATH_FACTOR = { mountains: 1.6, jungle: 1.6, hills: 1.15, forest: 1.1 };
@@ -108,8 +109,8 @@ WT.military = (function () {
     if (destProv === army.prov) { army.path = []; return { ok: true, reason: 'Armia pozostaje na miejscu.', armyId: armyId }; }
     var path = findPath(army, destProv);
     if (!path) return { ok: false, reason: noPathReason(army, destProv) };
-    var mover = sizeSoldiers && sizeSoldiers < army.size ? split(army, sizeSoldiers) : army;
-    if (!mover) return { ok: false, reason: 'Za mały oddział do podziału.' };
+    var mover = splitForOrder(army, sizeSoldiers);
+    if (!mover) return { ok: false, reason: 'Wyślij co najmniej ' + MIN_ARMY + ' żołnierzy.' };
     mover.path = path;
     var turns = estimateTurns(army.owner, path);
     return { ok: true, reason: 'Marsz: ' + path.length + ' prow., ok. ' + turns + ' tur.', armyId: mover.id, turns: turns };
@@ -119,6 +120,16 @@ WT.military = (function () {
     var p = G().provinces[destProv];
     if (!canEnter(army.owner, destProv)) return 'Brak dostępu: ' + name(p.owner) + ' nie jest z tobą w wojnie ani w sojuszu.';
     return 'Brak drogi lądowej (cel za morzem lub odcięty).';
+  }
+
+  /**
+   * Oddział do wysłania rozkazem: cała armia, gdy po odłączeniu zostałaby resztka (< MIN_REMAINDER),
+   * inaczej odłączona część. null tylko wtedy, gdy wysyłana część jest mniejsza niż MIN_ARMY.
+   */
+  function splitForOrder(army, size) {
+    if (!size || size >= army.size - MIN_REMAINDER) return army;
+    if (size < MIN_ARMY) return null;
+    return split(army, size);
   }
 
   function split(army, size) {
@@ -473,7 +484,7 @@ WT.military = (function () {
     MOVE_POINTS: MOVE_POINTS,
     canEnter: canEnter, isHostileTerritory: isHostileTerritory, moveCost: moveCost, hostileArmies: hostileArmies,
     findPath: findPath, findPathFor: findPathFor, estimateTurns: estimateTurns,
-    order: order, split: split, cancel: cancel, merge: merge, mergeIfIdle: mergeIfIdle, mergeAll: mergeAll, disband: disband, MIN_ARMY: MIN_ARMY,
+    order: order, split: split, splitForOrder: splitForOrder, cancel: cancel, merge: merge, mergeIfIdle: mergeIfIdle, mergeAll: mergeAll, disband: disband, MIN_ARMY: MIN_ARMY, MIN_REMAINDER: MIN_REMAINDER,
     power: power, invalidatePower: invalidatePower, battle: battle, retreat: retreat, engageAt: engageAt,
     moveAll: moveAll, stepArmy: stepArmy, resetMoves: resetMoves, applyAttrition: applyAttrition, engagedFraction: engagedFraction,
     resolveOccupations: resolveOccupations, occupy: occupy, expelTrespassers: expelTrespassers,

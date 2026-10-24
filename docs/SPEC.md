@@ -302,3 +302,14 @@ Fonty: systemowe sans + monospace dla liczb.
 - **Dziennik zdarzeń** (prawy dolny róg, zwijany) + toasty dla bitw/wojen gracza. Modal dla propozycji AI do gracza.
 - Wydajność: Path2D cache per prowincja; cały ląd rysowany do offscreen canvas per tryb i odświeżany tylko po zmianie
   właścicieli; armie i trasy na overlay. Picking: siatka przestrzenna bboxów + `isPointInPath`.
+
+### WT.air (js/core/air.js)
+- `G.squadrons: { id: { id, owner, base, planes, phase: 'idle'|'out'|'back', target, x, y, repeat, spotted, airborne } }`.
+- `planeCost(cc, n)`, `canBuildBombers(cc, prov, n)`, `buildBombers(cc, prov, n) → squadron|null` (dołącza do stojącego dywizjonu w bazie).
+- `orderRaid(squadId, targetProv, repeat) → {ok, reason, turns}` — tylko cele w wojnie, ≤ RANGE_KM od bazy; `recall(id)`, `disband(id)`, `flightTurns(from, to)`.
+- `processTurn()` (w `turn.end` po flotach): lot, zrzut (`bombProvince`), powrót, radar, licznik `province.bombed`.
+- `interceptChance(prov)` — działka (`buildings.aa`) celu + 50% najlepszego sąsiada obrońcy, ×1.35 pod radarem, maks. 0.75.
+- `radarRangeKm(level)`, `radarStations(cc)`, `radarCovers(cc, x, y)`, `visibleFor(cc)` (własne + wrogie lecące w zasięgu radaru).
+- `planesOf(cc)`, `upkeep(cc)` (w `economy.expenses().air`). Zdarzenia: `bombing`, `radar`.
+- Budynki `aa` i `radar` w `economy.BUILDINGS`; `province.bombed > 0` → połowa dochodu prowincji.
+- `military.splitForOrder(army, size)` — rozkaz wysyła całość, gdy reszta < `MIN_REMAINDER` (1000).
