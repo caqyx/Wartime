@@ -33,6 +33,9 @@ WT.ai = (function () {
       manageArmies(cc, ctx, i);
       manageFleets(cc, ctx, i);
       if (staggered(i, AIR_CHECK_EVERY)) manageAir(cc);
+      if (staggered(i, RESEARCH_CHECK_EVERY)) manageResearch(cc);
+      if (staggered(i, COURT_CHECK_EVERY)) courtPlayer(cc, ctx);
+      if (staggered(i, TRADE_CHECK_EVERY)) seekTrade(cc, ctx);
     });
   }
 
@@ -49,7 +52,8 @@ WT.ai = (function () {
       newWars: 0,
       maxNewWars: 1 + Math.floor(turn() / 40),
       aiWars: G().wars.filter(function (w) { return w.attackers[0] !== G().player; }).length,
-      maxAiWars: Math.min(14, 3 + Math.floor(turn() / 12))
+      maxAiWars: Math.min(14, 3 + Math.floor(turn() / 12)),
+      playerOffers: 0, playerGifts: 0
     };
   }
 
@@ -132,6 +136,7 @@ WT.ai = (function () {
       if (g > bestGdp) { bestGdp = g; best = id; }
     });
     if (best < 0) return null;
+    if (c.capital >= 0 && (G().provinces[c.capital].buildings.university || 0) < 2 && !(G().provinces[c.capital].builds || {}).university && U.chance(0.15)) return { prov: c.capital, type: 'university' };
     if (c.capital >= 0 && G().provinces[c.capital].buildings.barracks < 1 && !(G().provinces[c.capital].builds || {}).barracks && U.chance(0.2)) return { prov: c.capital, type: 'barracks' };
     return { prov: best, type: 'factory' };
   }
@@ -176,13 +181,107 @@ WT.ai = (function () {
     var best = -1, bestScore = 0;
     enemies.forEach(function (e) {
       S.controlledBy(e).forEach(function (id) {
-        if (S.dist(sq.base, id) > WT.air.RANGE_KM) return;
+        if (S.dist(sq.base, id) > WT.air.rangeKm(sq.owner)) return;
         var aa = G().provinces[id].buildings.aa || 0;
         var score = E().provGdp(id) * (1 - Math.min(WT.air.MAX_INTERCEPT, 1 - Math.pow(0.88, aa)));
         if (score > bestScore) { bestScore = score; best = id; }
       });
     });
     if (best >= 0) WT.air.orderRaid(sq.id, best, false);
+  }
+
+  // =====================================================================
+  // Nauka: budżet badań i wybór technologii
+  // =====================================================================
+
+  var RESEARCH_CHECK_EVERY = 4;
+
+  function manageResearch(cc) {
+    if (!WT.tech) return;
+    var c = WT.tech.ensure(S.country(cc)), atWar = D().enemiesOf(cc).length > 0;
+    var rate = E().balance(cc) < 0 ? 0.02 : atWar ? 0.04 : E().gdpPerCapita(cc) > 20000 ? 0.08 : 0.05;
+    if (Math.abs(rate - c.researchRate) > 0.001) WT.tech.setRate(cc, rate);
+    var next = WT.tech.nextFor(cc, atWar);
+    if (next && c.rp >= next.cost) WT.tech.research(cc, next.id);
+  }
+
+  // =====================================================================
+  // Dyplomacja wobec gracza: propozycje (sojusz, handel, pakt, prośba o pomoc) i prezenty
+  // =====================================================================
+
+  var COURT_CHECK_EVERY = 3, COURT_START_TURN = 3;
+  var OFFER_COOLDOWN = 30, GIFT_COOLDOWN = 26;   // tury między ofertami / prezentami jednego państwa
+  var PLAYER_OFFER_GAP = 4;                       // min. tury między dowolnymi dwiema ofertami dla gracza
+  var TRADE_CHECK_EVERY = 10, MAX_AI_TRADES = 4;
+
+  function courtPlayer(cc, ctx) {
+    var me = G().player;
+    if (!me || cc === me || !S.country(me) || !S.country(me).alive || turn() < COURT_START_TURN) return;
+    if (D().atWar(cc, me)) return;
+    var c = S.country(cc), rel = D().relation(cc, me);
+    var gapOk = turn() - (G().lastPlayerOffer != null ? G().lastPlayerOffer : -99) >= PLAYER_OFFER_GAP;
+    if (gapOk && ctx.playerOffers < 1 && turn() - (c.ai.lastOffer || -99) >= OFFER_COOLDOWN) {
+      var offer = pickOffer(cc, me, rel);
+      if (offer && D().addProposal(cc, me, offer.type, offer.terms)) { c.ai.lastOffer = turn(); G().lastPlayerOffer = turn(); ctx.playerOffers++; }
+    }
+    if (ctx.playerGifts < 1 && turn() - (c.ai.lastGift || -99) >= GIFT_COOLDOWN && wantsFavor(cc, me, rel)) {
+      var amount = giftAmount(cc, c);
+      if (amount > 0 && D().giveMoney(cc, me, amount).ok) { c.ai.lastGift = turn(); ctx.playerGifts++; }
+    }
+  }
+
+  /** Najpilniejsza oferta dla gracza (albo null): prośba o pomoc > sojusz > handel > pakt. */
+  function pickOffer(cc, me, rel) {
+    var losing = losingWarAgainst(cc, me);
+    if (losing && rel >= 25 && U.chance(0.5)) {
+      return { type: 'aidRequest', terms: { enemy: losing, amount: U.round(Math.min(25, 1 + E().countryGdp(cc) * 0.006), 1) } };
+    }
+    if (!D().allied(cc, me) && rel >= 50 && D().alliesOf(cc).length < D().MAX_ALLIANCES && wantsAlliance(cc, me, rel) && U.chance(0.4)) {
+      return { type: 'alliance', terms: {} };
+    }
+    if (!D().hasTrade(cc, me) && rel >= 20 && U.chance(0.35)) return { type: 'trade', terms: {} };
+    var neighbors = S.countryNeighbors(cc).indexOf(me) >= 0;
+    if (neighbors && !D().hasPact(cc, me) && rel >= -15 && rel < 45 && Mil().power(me) > Mil().power(cc) && U.chance(0.3)) {
+      return { type: 'pact', terms: {} };
+    }
+    return null;
+  }
+
+  /** Wróg, z którym cc przegrywa wojnę (wynik ≤ −15), o ile gracz nie jest po jego stronie. */
+  function losingWarAgainst(cc, me) {
+    var found = null;
+    D().warsOf(cc).forEach(function (w) {
+      if (found) return;
+      var side = D().sideOf(w, cc), enemies = side === 'attackers' ? w.defenders : w.attackers;
+      if (enemies.indexOf(me) >= 0 || D().scoreOf(w, cc) > -15) return;
+      found = enemies[0];
+    });
+    return found;
+  }
+
+  function wantsAlliance(cc, me, rel) {
+    if (rel >= 80 || D().commonEnemyOrThreat(cc, me)) return true;
+    return D().enemiesOf(cc).length > 0 && Mil().power(me) > 0.5 * Mil().power(cc);
+  }
+
+  /** Prezent „na dobre relacje”: państwo zależy na graczu (sąsiad, wspólny wróg, silny partner). */
+  function wantsFavor(cc, me, rel) {
+    if (rel < 10 || rel >= 75) return false;
+    return S.countryNeighbors(cc).indexOf(me) >= 0 || D().commonEnemyOrThreat(cc, me) || Mil().power(me) > 1.5 * Mil().power(cc);
+  }
+
+  function giftAmount(cc, c) {
+    var amount = U.round(U.clamp(E().countryGdp(cc) * 0.002, 0.5, 15), 1);
+    return c.treasury - amount > 3 * reserveFor(c) ? amount : 0;
+  }
+
+  /** Umowy handlowe między państwami AI (przyjaciele i sąsiedzi o dobrych relacjach). */
+  function seekTrade(cc) {
+    if (D().tradesOf(cc).length >= MAX_AI_TRADES || D().enemiesOf(cc).length) return;
+    var partner = S.countryNeighbors(cc).filter(function (o) {
+      return o !== G().player && !D().hasTrade(cc, o) && D().relation(cc, o) >= 30 && D().tradesOf(o).length < MAX_AI_TRADES;
+    })[0];
+    if (partner) D().proposeTrade(cc, partner);
   }
 
   // =====================================================================

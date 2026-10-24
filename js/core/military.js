@@ -223,7 +223,7 @@ WT.military = (function () {
     var p = G().provinces[provId], owners = defenders.map(function (a) { return a.owner; });
     var fortFriendly = owners.some(function (o) { return D().friendly(o, p.ctrl); });
     var bonus = 1 + (TERRAIN_DEFENSE[terrain(provId)] || 0);
-    if (fortFriendly) bonus += 0.25 * p.buildings.fort;
+    if (fortFriendly) bonus += 0.25 * p.buildings.fort * (WT.tech ? WT.tech.mod(p.ctrl, 'fort') : 1);
     if (opts && opts.landing) bonus += LANDING_PENALTY;
     return bonus;
   }
@@ -409,7 +409,7 @@ WT.military = (function () {
     Object.keys(armies).forEach(function (id) {
       var a = armies[id];
       if (!a || a.embarked || !D().atWar(a.owner, G().provinces[a.prov].owner)) return;
-      a.size = Math.floor(a.size * (1 - ATTRITION));
+      a.size = Math.floor(a.size * (1 - ATTRITION * (WT.tech ? WT.tech.mod(a.owner, 'attrition') : 1)));
       if (a.size < MIN_ARMY) S.removeArmy(id);
     });
   }

@@ -22,7 +22,7 @@ WT.air = (function () {
   var BUILDING_HIT = 0.06;          // szansa zniszczenia poziomu budynku na bombowiec, który przeleciał
   var APPROACH_KM = 250;            // pierwsza tura lotu kończy się przed celem — radar obrońcy ma turę na ostrzeżenie
   var DISRUPT_TURNS = 3;            // tyle tur prowincja daje połowę dochodu po nalocie
-  var HIT_ORDER = ['factory', 'port', 'barracks', 'radar', 'aa', 'fort'];
+  var HIT_ORDER = ['factory', 'university', 'port', 'barracks', 'radar', 'aa', 'fort'];
 
   function G() { return WT.G; }
   function M() { return U.mapData(); }
@@ -86,7 +86,10 @@ WT.air = (function () {
   // Rozkazy
   // =====================================================================
 
-  function rangeKm() { return RANGE_KM; }
+  function techMod(cc, key) { return WT.tech && cc ? WT.tech.mod(cc, key) : 1; }
+  function techAdd(cc, key) { return WT.tech && cc ? WT.tech.add(cc, key) : 0; }
+  /** Zasięg bombowców kraju (technologia „Bombowce strategiczne” +600 km). */
+  function rangeKm(cc) { return RANGE_KM + techAdd(cc, 'bomberRange'); }
   /** Tury do zrzutu: pierwsza tura kończy się APPROACH_KM przed celem, uderzenie najwcześniej w drugiej. */
   function flightTurns(fromProv, toProv) {
     var d = S.dist(fromProv, toProv), first = Math.min(SPEED_KM, Math.max(0, d - APPROACH_KM));
@@ -98,7 +101,7 @@ WT.air = (function () {
     if (target == null || target < 0 || !G().provinces[target]) return 'Wybierz prowincję.';
     var ctrl = G().provinces[target].ctrl;
     if (!D().atWar(sq.owner, ctrl)) return 'Bombardować można tylko prowincje państw, z którymi jesteś w wojnie.';
-    if (S.dist(sq.base, target) > RANGE_KM) return 'Poza zasięgiem: ' + Math.round(S.dist(sq.base, target)) + ' km (maks. ' + RANGE_KM + ' km od bazy).';
+    if (S.dist(sq.base, target) > rangeKm(sq.owner)) return 'Poza zasięgiem: ' + Math.round(S.dist(sq.base, target)) + ' km (maks. ' + rangeKm(sq.owner) + ' km od bazy).';
     if (sq.phase === 'back') return 'Dywizjon wraca do bazy.';
     return null;
   }
@@ -192,7 +195,9 @@ WT.air = (function () {
     });
     level += AA_NEIGHBOR_SHARE * help;
     if (radarCovers(defender, center(provId)[0], center(provId)[1])) level *= RADAR_AA_BONUS;
-    return Math.min(MAX_INTERCEPT, 1 - Math.pow(1 - AA_KILL, level));
+    var kill = Math.min(0.9, AA_KILL * techMod(defender, 'aaKill'));
+    var chance = Math.min(MAX_INTERCEPT + techAdd(defender, 'aaCap'), 1 - Math.pow(1 - kill, level));
+    return chance * techMod(attacker, 'stealth');
   }
 
   function bombProvince(sq) {
@@ -201,7 +206,7 @@ WT.air = (function () {
     for (var i = 0; i < sq.planes; i++) if (U.chance(chance)) shot++;
     var hits = sq.planes - shot;
     sq.planes = hits;
-    var damage = applyDamage(provId, hits);
+    var damage = applyDamage(provId, hits, techMod(sq.owner, 'bombDamage'));
     var report = { attacker: sq.owner, defender: defender, prov: provId, planes: hits + shot, shot: shot, hits: hits, devLoss: damage.devLoss, destroyed: damage.destroyed };
     logRaid(report);
     WT.events.emit('bombing', report);
@@ -209,15 +214,16 @@ WT.air = (function () {
     return report;
   }
 
-  function applyDamage(provId, hits) {
+  function applyDamage(provId, hits, power) {
+    power = power || 1;
     var p = G().provinces[provId], res = { devLoss: 0, destroyed: [] };
     if (!hits) return res;
     var before = p.dev;
-    p.dev = Math.max(MIN_DEV, p.dev - Math.min(MAX_DEV_LOSS, hits * DEV_LOSS_PER_PLANE));
+    p.dev = Math.max(MIN_DEV, p.dev - Math.min(MAX_DEV_LOSS * power, hits * DEV_LOSS_PER_PLANE * power));
     res.devLoss = U.round(before - p.dev, 3);
     p.bombed = Math.max(p.bombed || 0, DISRUPT_TURNS);
     for (var i = 0; i < hits; i++) {
-      if (!U.chance(BUILDING_HIT)) continue;
+      if (!U.chance(BUILDING_HIT * power)) continue;
       var type = HIT_ORDER.filter(function (t) { return (p.buildings[t] || 0) > 0; })[0];
       if (!type) break;
       p.buildings[type]--;
@@ -241,7 +247,7 @@ WT.air = (function () {
 
   // ---------- Radar ----------
 
-  function radarRangeKm(level) { return level > 0 ? RADAR_BASE_KM + RADAR_PER_LEVEL_KM * (level - 1) : 0; }
+  function radarRangeKm(level, cc) { return level > 0 ? Math.round((RADAR_BASE_KM + RADAR_PER_LEVEL_KM * (level - 1)) * techMod(cc, 'radarRange')) : 0; }
 
   /** Stacje radarowe kraju (i jego sojuszników): [{ x, y, km }]. */
   function radarStations(cc) {
@@ -250,7 +256,7 @@ WT.air = (function () {
       var lvl = p.buildings.radar || 0;
       if (!lvl || !(p.ctrl === cc || D().allied(p.ctrl, cc))) return;
       var c = center(id);
-      out.push({ prov: id, x: c[0], y: c[1], km: radarRangeKm(lvl) });
+      out.push({ prov: id, x: c[0], y: c[1], km: radarRangeKm(lvl, p.ctrl) });
     });
     return out;
   }

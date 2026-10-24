@@ -134,6 +134,7 @@
     if (allied(p, cc)) t += '<span class="tag ally">Sojusz</span>';
     if (hasPact(p, cc)) t += '<span class="tag pact">Pakt</span>';
     if (hasTruce(p, cc)) t += '<span class="tag truce">Rozejm</span>';
+    if (call('diplomacy.hasTrade', [p, cc], false)) t += '<span class="tag trade">Handel</span>';
     return t;
   }
   function relClass(v) { return v > 15 ? 'pos' : v < -15 ? 'neg' : 'dim'; }
@@ -177,6 +178,9 @@
     plane: '<path d="M21 15.5l-8-4.5V5a1.5 1.5 0 0 0-3 0v6l-8 4.5V17l8-2.5v4l-2.5 1.5V21l4-1 4 1v-1l-2.5-1.5v-4l8 2.5z"/>',
     aa: '<path d="M4 20.5h16M7 20.5l2-6h6l2 6"/><path d="M12 14.5L18 5"/><path d="M17 8.5l3-1.5M15.5 4.5l1 3"/>',
     radar: '<path d="M4.5 19.5a10 10 0 0 1 0-15"/><path d="M8 16a5.5 5.5 0 0 1 0-8"/><circle cx="12" cy="12" r="1.6"/><path d="M12 12l8.5-5"/><path d="M12 13.5v7"/>',
+    flask: '<path d="M9.5 3.5h5M10.5 3.5v5.5L5 18.5A1.6 1.6 0 0 0 6.4 21h11.2a1.6 1.6 0 0 0 1.4-2.5L13.5 9V3.5"/><path d="M7.5 14.5h9"/>',
+    university: '<path d="M3 9.5L12 5l9 4.5-9 4.5z"/><path d="M6.5 11.3V16c0 1.5 2.5 3 5.5 3s5.5-1.5 5.5-3v-4.7"/><path d="M21 9.5V15"/>',
+    trade: '<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>',
     trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H4.5a3 3 0 0 0 3.5 4M16 6h3.5a3 3 0 0 1-3.5 4"/><path d="M12 13v4M8.5 20.5h7M9.5 17h5"/>',
     select: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17.5l2 2 4.5-4.5"/>',
     mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/>'
@@ -185,7 +189,7 @@
     return '<svg class="ico' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
   }
   UI.icon = icon;
-  const BUILDING_ICONS = { factory: 'factory', fort: 'fort', port: 'anchor', barracks: 'tent', aa: 'aa', radar: 'radar' };
+  const BUILDING_ICONS = { factory: 'factory', fort: 'fort', port: 'anchor', barracks: 'tent', aa: 'aa', radar: 'radar', university: 'university' };
   const TOAST_ICONS = { war: 'alert', bad: 'alert', battle: 'swords', peace: 'check', ok: 'check' };
 
   // Suwaki: wypełnienie toru do wartości (zmienna CSS --p)
@@ -223,6 +227,7 @@
       if (kbd) b.appendChild(kbd);
       if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', label || b.title || '');
     };
+    btnIcon('btn-science', 'flask');
     btnIcon('btn-ranking', 'trophy');
     btnIcon('btn-diplomacy', 'handshake');
     btnIcon('btn-god', 'sparkles');
@@ -231,7 +236,7 @@
     if (menuBtn && !menuBtn.querySelector('.ico')) { menuBtn.innerHTML = icon('menu'); menuBtn.classList.add('btn-icon'); menuBtn.setAttribute('aria-label', 'Menu'); }
     const endLabel = document.querySelector('#btn-endturn .btn-label'); if (endLabel) endLabel.classList.remove('btn-label');
     const god = $('tb-god'); if (god && !god.querySelector('.ico')) god.innerHTML = icon('sparkles') + 'GOD';
-    const menuIcons = { ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout' };
+    const menuIcons = { science: 'flask', ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout' };
     document.querySelectorAll('#menu .menu-item').forEach((b) => {
       if (b.querySelector('.ico')) return;
       const txt = document.createElement('span'); txt.textContent = b.textContent; b.textContent = '';
@@ -504,6 +509,7 @@
     if (act === 'save') openSaveMenu();
     else if (act === 'god-toggle') setGodMode(!isGod());
     else if (act === 'ranking') openRanking();
+    else if (act === 'science') openScience();
     else if (act === 'help') openHelp();
     else if (act === 'exit') confirmModal('Wyjście', 'Wrócić do menu głównego? Niezapisany postęp zostanie utracony (autozapis co 5 tur).', 'Wyjdź', () => { WT.G = null; showStart(); }, true);
   }
@@ -521,6 +527,7 @@
     $('btn-menu').addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
     $('btn-diplomacy').addEventListener('click', () => toggleDiplomacy());
     $('btn-ranking').addEventListener('click', () => openRanking());
+    $('btn-science').addEventListener('click', () => openScience());
     $('btn-god').addEventListener('click', () => toggleGodPanel());
     $('tb-country').addEventListener('click', () => R().centerOnCountry(me(), 0.8));
     $('btn-more').addEventListener('click', (e) => { e.stopPropagation(); setTopbarExpanded(!$('topbar').classList.contains('tb-expanded')); });
@@ -781,7 +788,7 @@
     if (WT.air && owner === me() && ctrl === owner) {
       h += '<span class="k">Obrona plot.</span><span class="v">' + Math.round(100 * WT.air.interceptChance(S.selProv, null)) + '% zestrzeleń</span>';
       const rl = (pd.buildings || {}).radar || 0;
-      if (rl) h += '<span class="k">Radar</span><span class="v">' + fmtInt(WT.air.radarRangeKm(rl)) + ' km</span>';
+      if (rl) h += '<span class="k">Radar</span><span class="v">' + fmtInt(WT.air.radarRangeKm(rl, me())) + ' km</span>';
     }
     if (pd.unrest) h += '<span class="k">Niepokoje</span><span class="v ' + (pd.unrest > 30 ? 'neg' : '') + '">' + fmtInt(pd.unrest) + '</span>';
     return h + '</div></div>';
@@ -1022,6 +1029,8 @@
       : '<button class="btn btn-danger" data-dip="war"' + (truce ? ' disabled title="Obowiązuje rozejm"' : '') + '>Wypowiedz wojnę</button>';
     h += ally ? '<button class="btn" data-dip="break">Zerwij sojusz</button>' : '<button class="btn" data-dip="alliance"' + (war ? ' disabled' : '') + '>Zaproponuj sojusz</button>';
     if (!pact) h += '<button class="btn" data-dip="pact"' + (war ? ' disabled' : '') + '>Pakt o nieagresji</button>';
+    h += call('diplomacy.hasTrade', [p, cc], false) ? '<button class="btn" data-dip="trade-cancel">Zerwij handel</button>'
+      : '<button class="btn" data-dip="trade"' + (war ? ' disabled' : '') + ' title="+3% dochodu dla obu stron; wymaga relacji ≥ 15">Umowa handlowa</button>';
     h += '<button class="btn" data-dip="improve" title="Koszt ok. ' + fmtNum(impCost, 1) + ' mld $">Popraw relacje</button>';
     h += '<button class="btn" data-dip="insult">Obraź</button>';
     h += '<button class="btn btn-ghost" data-dip="show">Pokaż na mapie</button>';
@@ -1077,6 +1086,8 @@
       case 'alliance': resultToast(call('diplomacy.proposeAlliance', [p, cc], null), 'Sojusz zawarty'); break;
       case 'break': resultToast(call('diplomacy.breakAlliance', [p, cc], null), 'Sojusz zerwany'); break;
       case 'pact': resultToast(call('diplomacy.proposePact', [p, cc], null), 'Pakt podpisany'); break;
+      case 'trade': resultToast(call('diplomacy.proposeTrade', [p, cc], null), 'Umowa handlowa podpisana'); break;
+      case 'trade-cancel': resultToast(call('diplomacy.cancelTrade', [p, cc], null), 'Umowa handlowa zerwana'); break;
       case 'improve': resultToast(call('diplomacy.improveRelations', [p, cc], null), 'Relacje poprawione'); break;
       case 'insult': resultToast(call('diplomacy.insult', [p, cc], null), 'Obrażono ' + name); break;
       case 'show': R().centerOnCountry(cc, 0.8); return;
@@ -1415,7 +1426,8 @@
   // ===========================================================================
   // Propozycje AI → gracz
   // ===========================================================================
-  const PROPOSAL_TITLES = { peace: 'Propozycja pokoju', alliance: 'Propozycja sojuszu', pact: 'Propozycja paktu o nieagresji' };
+  const PROPOSAL_TITLES = { peace: 'Propozycja pokoju', alliance: 'Propozycja sojuszu', pact: 'Propozycja paktu o nieagresji',
+    trade: 'Propozycja umowy handlowej', aidRequest: 'Prośba o pomoc', callToArms: 'Wezwanie do wojny' };
   function proposalText(pr) {
     const from = '<b>' + esc(countryName(pr.from)) + '</b>';
     let t;
@@ -1433,6 +1445,10 @@
         if (terms.text) t += '<br><span class="dim">' + esc(terms.text) + '</span>';
         if (terms.war || terms.vs || terms.against) t += '<br><span class="dim">Dotyczy: ' + esc(countryName(terms.war || terms.vs || terms.against)) + '</span>';
       }
+    }
+    if (pr.type === 'aidRequest' && !isGod()) {
+      const tr = (liveCountry(me()) || {}).treasury || 0;
+      t += '<br><span class="dim">Twój skarbiec: ' + fmtNum(tr, 1) + ' mld $' + (tr < pr.terms.amount ? ' — za mało, nie możesz pomóc' : '') + '</span>';
     }
     const r = Math.round(rel(me(), pr.from));
     t += '<div class="kv" style="margin-top:10px"><span class="k">Relacje</span><span class="v ' + relClass(r) + '">' + (r > 0 ? '+' : '') + r + '</span></div>';
@@ -1530,7 +1546,7 @@
       '<div class="slider-row" style="margin-top:6px"><span class="dim">Koszt: <span class="num" id="air-cost">' + airCostText(S.planesN) + '</span></span>' +
       '<button class="btn btn-sm btn-ok" id="air-go" style="margin-left:auto"' + (can.ok ? '' : ' disabled') + '>Zbuduj bombowce</button></div>' +
       '<div class="reason" id="air-reason">' + (can.ok ? '' : esc(can.reason || '')) + '</div>' +
-      '<div class="hint">Zasięg ' + fmtInt(WT.air.RANGE_KM) + ' km. Bombowce niszczą rozwój i budynki prowincji wroga; działka plot. i radar wroga je zestrzeliwują.</div></div>';
+      '<div class="hint">Zasięg ' + fmtInt(WT.air.rangeKm(me())) + ' km. Bombowce niszczą rozwój i budynki prowincji wroga; działka plot. i radar wroga je zestrzeliwują.</div></div>';
     return h;
   }
   function airCostText(n) { return isGod() ? '0 (God Mode)' : fmtNum(WT.air.planeCost(me(), n), 1) + ' mld $'; }
@@ -1564,7 +1580,7 @@
     if (S.multi) exitMulti();
     S.airSel = sqId;
     const b = provStatic(sq.base);
-    R().view.airRange = { x: b.cx, y: b.cy, r: WT.air.RANGE_KM / (MAP().kmPerUnit || 4) };
+    R().view.airRange = { x: b.cx, y: b.cy, r: WT.air.rangeKm(sq.owner) / (MAP().kmPerUnit || 4) };
     if (isMobile()) $('province-panel').classList.add('sheet-collapsed');
     updateCursor();
     R().requestDraw();
@@ -1586,8 +1602,63 @@
   function setRadarRing(id) {
     const lvl = id >= 0 && WT.air ? ((provDyn(id).buildings || {}).radar || 0) : 0;
     const p = id >= 0 ? provStatic(id) : null;
-    R().view.radarRing = lvl ? { x: p.cx, y: p.cy, r: WT.air.radarRangeKm(lvl) / (MAP().kmPerUnit || 4) } : null;
+    R().view.radarRing = lvl ? { x: p.cx, y: p.cy, r: WT.air.radarRangeKm(lvl, me()) / (MAP().kmPerUnit || 4) } : null;
     R().requestDraw();
+  }
+
+  // ===========================================================================
+  // Nauka: budżet badań, punkty, drzewko technologii
+  // ===========================================================================
+  function openScience() {
+    if (!S.inGame || !G() || !WT.tech) return;
+    if (S.modals.some((m) => m.science)) return;
+    const close = openModal({ title: icon('flask') + ' Nauka i technologie', wide: true, body: '<div class="sci-wrap" id="sci-wrap"></div>', onOpen: (el) => renderScience(el) });
+    S.modals[S.modals.length - 1].science = true;
+    return close;
+  }
+  UI.openScience = openScience;
+  function renderScience(el) {
+    const cc = me(), c = WT.tech.ensure(liveCountry(cc)), pts = WT.tech.pointsPerTurn(cc), spend = WT.tech.spending(cc);
+    const ratePct = Math.round(c.researchRate * 100), uni = WT.tech.universityLevels(cc);
+    let h = '<div class="sci-stats">' +
+      sciStat('Technologia', fmtNum(c.tech, 2), 'mnożnik siły armii i floty') +
+      sciStat('Punkty nauki', fmtInt(Math.floor(c.rp)), isGod() ? 'God Mode: odkrycia za darmo' : '+' + fmtNum(pts.total, 1) + ' na turę') +
+      sciStat('Z budżetu', '+' + fmtNum(pts.budget, 1), fmtNum(spend, 2) + ' mld $/tydz.') +
+      sciStat('Z uniwersytetów', '+' + fmtNum(pts.universities, 1), uni + ' ' + plural(uni, 'poziom', 'poziomy', 'poziomów') + ' · +2 pkt/poziom') + '</div>';
+    h += '<div class="sci-budget"><span>Budżet na badania</span><input type="range" id="sci-rate" min="0" max="' + Math.round(WT.tech.MAX_RATE * 100) + '" value="' + ratePct + '">' +
+      '<span class="num" id="sci-rate-val">' + ratePct + '% dochodu</span></div>' +
+      '<div class="hint">Więcej punktów: wyższy budżet (malejące zyski) i uniwersytety w prowincjach (panel prowincji → Budynki → Uniwersytet, lub masowo przez zaznaczanie wielu prowincji).</div>';
+    h += '<div class="sci-tree">';
+    WT.tech.BRANCHES.forEach((b) => {
+      h += '<div class="sci-branch"><div class="sci-branch-title">' + esc(b.name) + '</div>';
+      WT.tech.TREE.filter((t) => t.branch === b.id).forEach((t) => { h += techCard(cc, c, t); });
+      h += '</div>';
+    });
+    el.querySelector('#sci-wrap').innerHTML = h + '</div>';
+    const rate = el.querySelector('#sci-rate');
+    rate.addEventListener('input', () => { el.querySelector('#sci-rate-val').textContent = rate.value + '% dochodu'; });
+    rate.addEventListener('change', () => { WT.tech.setRate(cc, rate.value / 100); renderScience(el); refreshAll(); });
+    el.querySelectorAll('[data-tech]').forEach((btn) => btn.addEventListener('click', () => {
+      const res = WT.tech.research(cc, btn.dataset.tech);
+      toast(res.reason, res.ok ? 'ok' : 'bad', 2500);
+      renderScience(el); refreshAll();
+    }));
+    syncRangesIn(el);
+  }
+  function sciStat(label, value, sub) {
+    return '<div class="sci-stat"><span class="lbl">' + label + '</span><span class="val num">' + value + '</span><span class="sub">' + esc(sub) + '</span></div>';
+  }
+  function techCard(cc, c, t) {
+    const done = !!c.techs[t.id], chk = done ? null : WT.tech.canResearch(cc, t.id);
+    const locked = !done && t.req.some((r) => !c.techs[r]);
+    const state = done ? 'done' : chk.ok ? 'ready' : locked ? 'locked' : 'saving';
+    const progress = state === 'saving' ? Math.min(100, Math.round(100 * c.rp / t.cost)) : 0;
+    return '<div class="tech-card ' + state + '"><div class="tech-head"><b>' + esc(t.name) + '</b>' +
+      (done ? '<span class="tag ally">Odkryte</span>' : '<span class="tech-cost num">' + t.cost + ' pkt</span>') + '</div>' +
+      '<div class="tech-desc">' + esc(t.desc) + '</div>' +
+      (locked ? '<div class="tech-req">Wymaga: ' + esc(t.req.map((r) => WT.tech.get(r).name).join(', ')) + '</div>' : '') +
+      (state === 'saving' ? '<div class="progress"><i style="width:' + progress + '%"></i></div>' : '') +
+      (state === 'ready' ? '<button class="btn btn-sm btn-primary" data-tech="' + t.id + '">Badaj</button>' : '') + '</div>';
   }
 
   // ===========================================================================
@@ -1951,6 +2022,7 @@
     }
     const digit = /^Digit([1-4])$/.exec(e.code) || /^Numpad([1-4])$/.exec(e.code);
     if (digit) { setMapMode(MODES[+digit[1] - 1]); return; }
+    if (e.code === 'KeyN') { openScience(); return; }
     if (e.code === 'KeyB') { if (S.multi) exitMulti(); else startMulti(S.selProv >= 0 && provDyn(S.selProv).owner === me() ? [S.selProv] : []); return; }
     if (e.code === 'KeyM') { const u = unitObj(S.sel); mergeHere(u ? u.prov : S.selProv); }
   }

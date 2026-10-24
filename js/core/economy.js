@@ -14,7 +14,8 @@ WT.economy = (function () {
   var OCCUPIER_SHARE = 0.3;
   var AID_SHARE = 0.015;
   var FACTORY_BONUS = 0.15, PORT_BONUS = 0.05;
-  var BOMBED_INCOME = 0.5;            // prowincja po nalocie (licznik `bombed`) daje połowę dochodu
+  var BOMBED_INCOME = 0.5;
+  var TRADE_BONUS = 0.03, MAX_TRADES = 6;   // umowa handlowa: +3% dochodu podatkowego, liczone maks. 6 umów            // prowincja po nalocie (licznik `bombed`) daje połowę dochodu
   var MANPOWER_REGEN = 0.2;           // tys./tydz. na 1 mln mieszkańców (0.02% populacji)
   var MANPOWER_CAP = 25;              // tys. na 1 mln (2.5% populacji)
   var TAX_MIN = 0.05, TAX_MAX = 0.40;
@@ -25,10 +26,12 @@ WT.economy = (function () {
     port:     { name: 'Port',    cost: 1.0, rate: 0.005, turns: 4, max: 3, desc: 'budowa okrętów, +5% dochodu' },
     barracks: { name: 'Koszary', cost: 0.8, rate: 0.004, turns: 3, max: 3, desc: '+25% rezerw, -10% kosztu rekrutacji' },
     aa:       { name: 'Działka plot.', cost: 1.2, rate: 0.004, turns: 3, max: 5, desc: 'zestrzeliwują bombowce (12%/poziom, maks. 75%), pomagają sąsiednim prowincjom' },
+    university: { name: 'Uniwersytet', cost: 2.0, rate: 0.008, turns: 6, max: 5, desc: '+2 pkt nauki na turę za poziom' },
     radar:    { name: 'Radar',   cost: 1.5, rate: 0.003, turns: 4, max: 3, desc: 'wykrywa lecące bombowce (350 km +200 km/poziom), +35% skuteczności działek' }
   };
 
   function G() { return WT.G; }
+  function techMod(cc, key) { return WT.tech ? WT.tech.mod(cc, key) : 1; }
   function isGodFor(cc) { return !!(WT.god && WT.god.enabled() && cc === G().player); }
   function hostileArmiesIn(cc, provId) {
     return S.armiesIn(provId).some(function (a) { return WT.diplomacy.atWar(a.owner, cc); });
@@ -71,13 +74,14 @@ WT.economy = (function () {
       if (p.ctrl !== cc) continue;     // okupowana prowincja nic nie daje właścicielowi
       var base = provGdp(own[i]) * c.taxRate / WEEKS * mod * (p.bombed > 0 ? BOMBED_INCOME : 1);
       res.tax += base;
-      res.factories += base * (FACTORY_BONUS * p.buildings.factory + PORT_BONUS * p.buildings.port);
+      res.factories += base * (FACTORY_BONUS * techMod(cc, 'factory') * p.buildings.factory + PORT_BONUS * p.buildings.port);
     }
     for (i = 0; i < ctrl.length; i++) {
       if (G().provinces[ctrl[i]].owner !== cc) res.occupation += provGdp(ctrl[i]) * c.taxRate / WEEKS * OCCUPIER_SHARE;
     }
     res.aid = foreignAid(cc);
-    res.total = res.tax + res.factories + res.occupation + res.aid;
+    res.trade = (res.tax + res.factories) * TRADE_BONUS * Math.min(MAX_TRADES, WT.diplomacy.tradesOf ? WT.diplomacy.tradesOf(cc).length : 0);
+    res.total = res.tax + res.factories + res.occupation + res.aid + res.trade;
     return res;
   }
 
@@ -125,10 +129,11 @@ WT.economy = (function () {
       army: armySoldiers(cc) / 1000 * ARMY_UPKEEP_PER_K * scale,
       navy: navyShips(cc) * NAVY_UPKEEP * scale,
       buildings: buildingLevels(cc) * BUILDING_UPKEEP,
-      admin: countryGdp(cc) * ADMIN_RATE / WEEKS,
-      air: WT.air ? WT.air.upkeep(cc) : 0
+      admin: countryGdp(cc) * ADMIN_RATE / WEEKS * techMod(cc, 'admin'),
+      air: WT.air ? WT.air.upkeep(cc) : 0,
+      research: WT.tech ? WT.tech.spending(cc) : 0
     };
-    res.total = res.army + res.navy + res.buildings + res.admin + res.air;
+    res.total = res.army + res.navy + res.buildings + res.admin + res.air + res.research;
     return res;
   }
 
@@ -301,7 +306,7 @@ WT.economy = (function () {
     S.provincesOf(c.cc).forEach(function (id) {
       var p = G().provinces[id], pop = S.provStatic(id).pop || 0;
       cap += pop * MANPOWER_CAP * (1 + 0.1 * p.buildings.barracks);
-      if (p.ctrl === c.cc) regen += pop * MANPOWER_REGEN * (1 + 0.25 * p.buildings.barracks);
+      if (p.ctrl === c.cc) regen += pop * MANPOWER_REGEN * (1 + 0.25 * p.buildings.barracks) * techMod(c.cc, 'manpower');
     });
     c.manpower = Math.min(cap, c.manpower + regen);
   }

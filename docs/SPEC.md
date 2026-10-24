@@ -313,3 +313,15 @@ Fonty: systemowe sans + monospace dla liczb.
 - `planesOf(cc)`, `upkeep(cc)` (w `economy.expenses().air`). Zdarzenia: `bombing`, `radar`.
 - Budynki `aa` i `radar` w `economy.BUILDINGS`; `province.bombed > 0` → połowa dochodu prowincji.
 - `military.splitForOrder(army, size)` — rozkaz wysyła całość, gdy reszta < `MIN_REMAINDER` (1000).
+
+### WT.tech (js/core/tech.js)
+- Kraj: `researchRate` (0–0.30 dochodu), `rp`, `techs {id:true}`, `techMods {klucz: wartość}` (przeliczane przy odkryciu).
+- `TREE`, `BRANCHES`, `ensure(c)`, `ensureAll()` (nowa gra i stare zapisy), `mod(cc, key)` (mnożnik, domyślnie 1), `add(cc, key)` (dodatek, domyślnie 0), `has(cc, id)`.
+- `setRate(cc, r)`, `spending(cc)` (w `economy.expenses().research`), `pointsPerTurn(cc) → {budget, universities, total}`, `universityLevels(cc)`.
+- `canResearch(cc, id)`, `research(cc, id) → {ok, reason}` (God Mode gracza: darmo), `processTurn()` (w `turn.end` po ekonomii), `nextFor(cc, atWar)` dla AI.
+- Klucze efektów: fort, attrition, aaKill, aaCap, radarRange, bomberRange, bombDamage, stealth, fleet, shipCapacity, factory, admin, research, manpower; `tech` dodawane do `country.tech`.
+
+### Handel i oferty AI (diplomacy.js, ai.js)
+- `G.trades [{a, b, since}]`; `proposeTrade(a, b)`, `makeTrade`, `cancelTrade`, `hasTrade`, `tradesOf(cc)`; `economy.income().trade`.
+- Nowe typy propozycji: `trade`, `aidRequest {enemy, amount}`. AI: `courtPlayer` (oferty i prezenty dla gracza, globalny odstęp `G.lastPlayerOffer`), `seekTrade` (umowy AI–AI), `manageResearch`.
+

@@ -456,6 +456,52 @@ WT.diplomacy = (function () {
     return { ok: true, reason: 'Pakt zerwany (-20 stabilności, spadek relacji).' };
   }
 
+  // =====================================================================
+  // Umowy handlowe: +3% dochodu podatkowego obu stron (economy.income().trade)
+  // =====================================================================
+
+  var TRADE_MIN_REL = 15, TRADE_BREAK_REL = -20;
+
+  function trades() { if (!G().trades) G().trades = []; return G().trades; }
+  function hasTrade(a, b) { return trades().some(function (t) { return (t.a === a && t.b === b) || (t.a === b && t.b === a); }); }
+  function tradesOf(cc) {
+    return trades().filter(function (t) { return t.a === cc || t.b === cc; }).map(function (t) { return t.a === cc ? t.b : t.a; });
+  }
+
+  function proposeTrade(a, b) {
+    var err = checkPair(a, b);
+    if (err) return { accepted: false, reason: err };
+    if (hasTrade(a, b)) return { accepted: false, reason: 'Umowa handlowa już obowiązuje.' };
+    if (atWar(a, b)) return { accepted: false, reason: 'Jesteście w stanie wojny.' };
+    if (isPlayer(b)) { addProposal(a, b, 'trade', {}); return { accepted: false, reason: 'Propozycja przekazana graczowi.' }; }
+    var rel = relation(a, b);
+    if (rel < TRADE_MIN_REL) return { accepted: false, reason: name(b) + ' odrzuca umowę handlową (relacje ' + rel + ', wymagane ' + TRADE_MIN_REL + ').' };
+    makeTrade(a, b);
+    return { accepted: true, reason: name(b) + ' podpisuje umowę handlową (+3% dochodu dla obu stron).' };
+  }
+
+  function makeTrade(a, b) {
+    if (hasTrade(a, b)) return;
+    trades().push({ a: a, b: b, since: G().turn });
+    changeRel(a, b, 5);
+    S.addLog('Umowa handlowa: ' + name(a) + ' – ' + name(b) + '.', a);
+  }
+
+  function cancelTrade(a, b, silent) {
+    if (!hasTrade(a, b)) return { ok: false, reason: 'Brak umowy handlowej.' };
+    G().trades = trades().filter(function (t) { return !((t.a === a && t.b === b) || (t.a === b && t.b === a)); });
+    if (!silent) { changeRel(a, b, -10); S.addLog(name(a) + ' zrywa umowę handlową z ' + name(b) + '.', a); }
+    return { ok: true, reason: 'Umowa handlowa zerwana.' };
+  }
+
+  /** Umowy wygasają przy wojnie, złych relacjach albo zniknięciu państwa. */
+  function pruneTrades() {
+    trades().slice().forEach(function (t) {
+      var dead = !S.country(t.a).alive || !S.country(t.b).alive;
+      if (dead || atWar(t.a, t.b) || relation(t.a, t.b) < TRADE_BREAK_REL) cancelTrade(t.a, t.b, true);
+    });
+  }
+
   function improveRelationsCost(a) { return U.round(1 + WT.economy.countryGdp(a) * 0.001, 2); }
 
   function improveRelations(a, b) {
@@ -600,7 +646,9 @@ WT.diplomacy = (function () {
     },
     alliance: function (p) { return name(p.from) + ' proponuje sojusz obronny.'; },
     pact: function (p) { return name(p.from) + ' proponuje pakt o nieagresji.'; },
-    callToArms: function (p) { return name(p.from) + ' wzywa do wojny przeciw ' + name(p.terms.enemy) + ' (sojusz obronny).'; }
+    callToArms: function (p) { return name(p.from) + ' wzywa do wojny przeciw ' + name(p.terms.enemy) + ' (sojusz obronny).'; },
+    trade: function (p) { return name(p.from) + ' proponuje umowę handlową (+3% dochodu dla obu stron).'; },
+    aidRequest: function (p) { return name(p.from) + ' przegrywa wojnę z: ' + name(p.terms.enemy) + ' i prosi o ' + U.fmtMoney(p.terms.amount) + ' wsparcia (lepsze relacje).'; }
   };
 
   function addProposal(from, to, type, terms) {
@@ -630,6 +678,16 @@ WT.diplomacy = (function () {
     }
     if (p.type === 'alliance') return formAlliance(p.from, p.to) ? { ok: true, reason: 'Sojusz zawarty.' } : { ok: false, reason: 'Nie można zawrzeć sojuszu.' };
     if (p.type === 'pact') { makePact(p.from, p.to); return { ok: true, reason: 'Pakt podpisany.' }; }
+    if (p.type === 'trade') {
+      if (atWar(p.from, p.to)) return { ok: false, reason: 'Jesteście w stanie wojny.' };
+      makeTrade(p.from, p.to);
+      return { ok: true, reason: 'Umowa handlowa podpisana (+3% dochodu).' };
+    }
+    if (p.type === 'aidRequest') {
+      var res = giveMoney(p.to, p.from, p.terms.amount);
+      if (res.ok) changeRel(p.from, p.to, 5);   // wdzięczność ponad zwykły efekt daru
+      return res;
+    }
     if (p.type === 'callToArms') {
       var war = G().wars.filter(function (w) { return w.id === p.terms.warId; })[0];
       if (!war || !S.country(p.to).alive) return { ok: false, reason: 'Ta wojna już się zakończyła.' };
@@ -641,6 +699,7 @@ WT.diplomacy = (function () {
 
   function declineProposal(p) {
     if (p.type === 'callToArms') { changeRel(p.from, p.to, -25); return { ok: true, reason: 'Odmówiono — relacje z ' + name(p.from) + ' spadają.' }; }
+    if (p.type === 'aidRequest') { changeRel(p.from, p.to, -6); return { ok: true, reason: 'Odmówiono pomocy — relacje z ' + name(p.from) + ' spadają.' }; }
     changeRel(p.from, p.to, -3);
     return { ok: true, reason: 'Propozycja odrzucona.' };
   }
@@ -655,6 +714,7 @@ WT.diplomacy = (function () {
     G().truces = G().truces.filter(function (x) { return x.until > t; });
     G().proposals = G().proposals.filter(function (p) { return t - p.turn < PROPOSAL_TTL; });
     G().wars.forEach(warScore);
+    pruneTrades();
     refreshCountries();
   }
 
@@ -665,8 +725,9 @@ WT.diplomacy = (function () {
     declareWar: declareWar, checkDeclareWar: checkDeclareWar, startWar: startWar, joinWar: joinWar,
     warScore: warScore, scoreOf: scoreOf, recordLosses: recordLosses, capitalLost: capitalLost, occupiedShare: occupiedShare,
     proposePeace: proposePeace, evaluatePeace: evaluatePeace, concludePeace: concludePeace,
-    proposeAlliance: proposeAlliance, evaluateAlliance: evaluateAlliance, formAlliance: formAlliance, breakAlliance: breakAlliance,
+    proposeAlliance: proposeAlliance, evaluateAlliance: evaluateAlliance, commonEnemyOrThreat: commonEnemyOrThreat, MAX_ALLIANCES: MAX_ALLIANCES, formAlliance: formAlliance, breakAlliance: breakAlliance,
     proposePact: proposePact, makePact: makePact, breakPact: breakPact,
+    proposeTrade: proposeTrade, makeTrade: makeTrade, cancelTrade: cancelTrade, hasTrade: hasTrade, tradesOf: tradesOf,
     improveRelations: improveRelations, improveRelationsCost: improveRelationsCost, insult: insult,
     giveMoney: giveMoney, giveTroops: giveTroops, availableTroops: availableTroops, aidTroopsReason: aidTroopsReason, aidDestination: aidDestination,
     addProposal: addProposal, answerProposal: answerProposal,

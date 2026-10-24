@@ -30,6 +30,7 @@ WT.turn = (function () {
       timed('armies', function () { WT.military.moveAll(); });
       timed('occupation', function () { WT.military.resolveOccupations(); WT.military.applyAttrition(); });
       timed('economy', runEconomy);
+      timed('research', function () { WT.tech.processTurn(); });
       timed('diplomacy', function () { WT.diplomacy.processTurn(); });
       updateExhaustion();
       advanceTime();

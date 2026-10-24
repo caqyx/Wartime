@@ -25,6 +25,7 @@
       <div class="tb-stat tb-secondary" title="Łączna liczebność armii"><span class="lbl">Armia</span><span class="val num" id="tb-army">—</span></div>
       <div class="tb-spacer"></div>
       <span class="god-badge hidden" id="tb-god">GOD MODE</span>
+      <button class="btn tb-secondary" id="btn-science" title="Nauka i technologie (N)">Nauka</button>
       <button class="btn tb-secondary" id="btn-ranking" title="Ranking państw">Ranking</button>
       <button class="btn tb-secondary" id="btn-diplomacy" title="Dyplomacja">Dyplomacja</button>
       <button class="btn tb-secondary" id="btn-god" title="Narzędzia God Mode">God Mode</button>
@@ -36,6 +37,7 @@
     <!-- Menu rozwijane -->
     <div id="menu" class="dropdown hidden">
       <button class="menu-item" data-act="save">Zapisz / wczytaj…</button>
+      <button class="menu-item" data-act="science">Nauka i technologie</button>
       <button class="menu-item" data-act="ranking">Ranking państw</button>
       <button class="menu-item" data-act="god-toggle" id="menu-god-toggle">Włącz God Mode</button>
       <button class="menu-item" data-act="help">Skróty klawiszowe</button>
@@ -109,6 +111,7 @@
   <script src="js/core/military.js"></script>
   <script src="js/core/naval.js"></script>
   <script src="js/core/air.js"></script>
+  <script src="js/core/tech.js"></script>
   <script src="js/core/ai.js"></script>
   <script src="js/core/god.js"></script>
   <script src="js/core/turn.js"></script>

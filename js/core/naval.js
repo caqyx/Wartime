@@ -68,7 +68,8 @@ WT.naval = (function () {
   function cargoSize(f) {
     return f.cargo.reduce(function (s, id) { return s + (G().armies[id] ? G().armies[id].size : 0); }, 0);
   }
-  function freeCapacity(f) { return Math.max(0, Math.floor(f.ships * SHIP_CAPACITY - cargoSize(f))); }
+  function freeCapacity(f) { return Math.max(0, Math.floor(f.ships * SHIP_CAPACITY * techMod(f.owner, 'shipCapacity') - cargoSize(f))); }
+  function techMod(cc, key) { return WT.tech ? WT.tech.mod(cc, key) : 1; }
 
   function bestTransport(cc, provId) {
     return S.fleetsIn(provId).filter(function (f) { return f.owner === cc; })
@@ -95,7 +96,7 @@ WT.naval = (function () {
     if (!path) return { ok: false, reason: 'Brak drogi morskiej do celu.' };
     var cap = freeCapacity(fleet);
     var amount = Math.round(size && size < army.size - Mil().MIN_REMAINDER ? size : army.size);
-    if (amount > cap) return { ok: false, reason: 'Flota pomieści maks. ' + U.fmtK(cap) + ' żołnierzy (1 eskadra = 10k).' };
+    if (amount > cap) return { ok: false, reason: 'Flota pomieści maks. ' + U.fmtK(cap) + ' żołnierzy (1 eskadra = ' + U.fmtK(SHIP_CAPACITY * techMod(army.owner, 'shipCapacity')) + ').' };
     var mover = Mil().splitForOrder(army, amount);
     if (!mover) return { ok: false, reason: 'Wyślij co najmniej ' + Mil().MIN_ARMY + ' żołnierzy.' };
     embark(mover, fleet);
@@ -171,7 +172,7 @@ WT.naval = (function () {
 
   function fleetStrength(fleets) {
     var s = 0;
-    fleets.forEach(function (f) { s += f.ships * S.country(f.owner).tech; });
+    fleets.forEach(function (f) { s += f.ships * S.country(f.owner).tech * techMod(f.owner, 'fleet'); });
     return s * U.randRange(0.85, 1.15);
   }
 

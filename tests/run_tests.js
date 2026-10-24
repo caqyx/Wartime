@@ -1,7 +1,7 @@
 /* Testy logiki gry w node (bez frameworków): `node tests/run_tests.js` */
 var path = require('path');
 var ROOT = path.join(__dirname, '..');
-var CORE = ['util', 'state', 'economy', 'diplomacy', 'military', 'naval', 'air', 'ai', 'god', 'turn', 'save'];
+var CORE = ['util', 'state', 'economy', 'diplomacy', 'military', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
 CORE.forEach(function (m) { require(path.join(ROOT, 'js/core', m + '.js')); });
 var WT = global.WT;
 var mock = require('./mock_map.js');
@@ -585,6 +585,80 @@ test('lotnictwo: działka zestrzeliwują część, nigdy nie gwarantują 100%, r
   assert(logs.length === 1, 'radar zgłosił nalot przed zrzutem');
   assert(WT.air.visibleFor('AAA').indexOf(enemy) >= 0, 'lecący wróg widoczny na mapie w zasięgu radaru');
   eq(enemy.phase, 'out', 'jeszcze nie zbombardował');
+});
+
+test('nauka: budżet, uniwersytety, drzewko, efekty', function () {
+  freshGame();
+  var c = G().countries.AAA;
+  eq(c.researchRate, WT.tech.DEFAULT_RATE, 'domyślny budżet badań');
+  assert(WT.economy.expenses('AAA').research > 0, 'badania w wydatkach');
+  var p0 = WT.tech.pointsPerTurn('AAA').total;
+  G().provinces[cellProv(0, 0)].buildings.university = 3;
+  assert(WT.tech.pointsPerTurn('AAA').total >= p0 + 6 - 1e-9, 'uniwersytety: +2 pkt/poziom');
+  WT.tech.setRate('AAA', 0.2);
+  assert(WT.tech.pointsPerTurn('AAA').budget > 0 && c.researchRate === 0.2, 'wyższy budżet');
+  WT.tech.setRate('AAA', 5); eq(c.researchRate, WT.tech.MAX_RATE, 'limit budżetu');
+  c.rp = 0;
+  eq(WT.tech.research('AAA', 'mil1').ok, false, 'za mało punktów');
+  eq(WT.tech.canResearch('AAA', 'mil2').ok, false, 'wymaga poprzednika');
+  WT.tech.processTurn();
+  assert(c.rp > 0, 'punkty rosną co turę');
+  c.rp = 1000;
+  var tech0 = c.tech;
+  assert(WT.tech.research('AAA', 'mil1').ok, 'odkrycie');
+  assert(Math.abs(c.tech - tech0 - 0.04) < 1e-9, 'technologia +0,04');
+  eq(c.rp, 1000 - WT.tech.get('mil1').cost, 'koszt pobrany');
+  WT.tech.research('AAA', 'def1');
+  eq(WT.tech.mod('AAA', 'fort'), 1.4, 'efekt fortów');
+  WT.tech.research('AAA', 'air1');
+  eq(WT.air.rangeKm('AAA'), WT.air.RANGE_KM + 600, 'zasięg bombowców');
+  var inc0 = WT.economy.income('AAA').factories;
+  G().provinces[cellProv(0, 0)].buildings.factory = 2;
+  var incF = WT.economy.income('AAA').factories;
+  WT.tech.research('AAA', 'eco1');
+  assert(WT.economy.income('AAA').factories > incF && incF > inc0, 'automatyzacja zwiększa dochód z fabryk');
+  var g = JSON.parse(JSON.stringify(G()));
+  Object.keys(g.countries).forEach(function (k) { delete g.countries[k].rp; delete g.countries[k].techs; delete g.countries[k].techMods; delete g.countries[k].researchRate; });
+  WT.save.importJSON(JSON.stringify(g));
+  assert(G().countries.AAA.techs && G().countries.AAA.rp === 0, 'stary zapis zmigrowany (nauka)');
+});
+
+test('God Mode: badania za darmo', function () {
+  freshGame({ god: true });
+  var c = G().countries.AAA; c.rp = 0;
+  assert(WT.tech.research('AAA', 'eco1').ok && c.rp === 0, 'odkrycie bez punktów');
+});
+
+test('handel i dyplomacja AI wobec gracza', function () {
+  freshGame();
+  setRel('AAA', 'BBB', 10);
+  eq(WT.diplomacy.proposeTrade('AAA', 'BBB').accepted, false, 'AI odrzuca handel przy słabych relacjach');
+  setRel('AAA', 'BBB', 40);
+  assert(WT.diplomacy.proposeTrade('AAA', 'BBB').accepted, 'AI przyjmuje handel');
+  assert(WT.economy.income('AAA').trade > 0, 'bonus handlowy w dochodzie');
+  WT.diplomacy.startWar(['AAA'], ['BBB'], true);
+  WT.diplomacy.processTurn();
+  eq(WT.diplomacy.hasTrade('AAA', 'BBB'), false, 'wojna zrywa umowę');
+  // AI → gracz: propozycja handlu i prośba o pomoc trafiają do gracza
+  freshGame();
+  WT.diplomacy.proposeTrade('CCC', 'AAA');
+  var pr = G().proposals.filter(function (p) { return p.type === 'trade' && p.to === 'AAA'; })[0];
+  assert(pr && /umowę handlową/.test(pr.text), 'propozycja handlu dla gracza');
+  assert(WT.diplomacy.answerProposal(pr.id, true).ok && WT.diplomacy.hasTrade('AAA', 'CCC'), 'przyjęcie podpisuje umowę');
+  G().countries.AAA.treasury = 100;
+  var ar = WT.diplomacy.addProposal('CCC', 'AAA', 'aidRequest', { enemy: 'BBB', amount: 5 });
+  var rel0 = WT.diplomacy.relation('AAA', 'CCC'), t0 = G().countries.CCC.treasury;
+  assert(WT.diplomacy.answerProposal(ar.id, true).ok, 'pomoc przekazana');
+  assert(G().countries.CCC.treasury === t0 + 5 && WT.diplomacy.relation('AAA', 'CCC') > rel0, 'pieniądze i relacje');
+  // symulacja: AI samo składa graczowi oferty i daje prezenty
+  freshGame();
+  ['BBB', 'CCC'].forEach(function (cc) { setRel('AAA', cc, 50); G().countries[cc].treasury = 500; });
+  var offers = 0, gifts = 0;
+  WT.events.on('proposal', function (p) { if (p.to === 'AAA') offers++; });
+  WT.events.on('log', function (e) { if (/przekazuje .* wsparcia dla: Alfa/.test(e.text)) gifts++; });
+  for (var i = 0; i < 60; i++) { WT.turn.end(); G().proposals = []; }
+  assert(offers > 0, 'AI składa oferty graczowi: ' + offers);
+  assert(gifts > 0, 'AI wysyła prezenty: ' + gifts);
 });
 
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {
