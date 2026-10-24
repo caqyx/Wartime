@@ -44,6 +44,7 @@ WT.save = (function () {
     if (map && map.provinces.length !== g.provinces.length) return false;
     WT.G = g;
     WT.state.rebuildIndex();
+    if (WT.military && WT.military.mergeAll) WT.military.mergeAll();   // stare zapisy: scal stojące armie
     return true;
   }
 

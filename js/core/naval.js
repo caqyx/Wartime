@@ -155,6 +155,7 @@ WT.naval = (function () {
     if (!landed.length) return;
     if (S.involvesPlayer(f.owner, G().provinces[dest].ctrl)) S.addLog('Desant: ' + name(f.owner) + ' ląduje w ' + S.provStatic(dest).name + ' (' + U.fmtK(landed.reduce(function (s, a) { return s + a.size; }, 0)) + ').', f.owner);
     Mil().engageAt(dest, landed[0], { landing: true });
+    landed.forEach(function (a) { if (G().armies[a.id] && a.prov === dest) Mil().mergeIfIdle(a); });
   }
 
   function returnHome(f) {

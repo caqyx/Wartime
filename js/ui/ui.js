@@ -77,6 +77,10 @@
   // Dostęp do danych
   // ===========================================================================
   const me = () => (G() ? G().player : null);
+  // Układ mobilny (css/mobile.css) i urządzenia dotykowe
+  function isMobile() { return !!(window.matchMedia && window.matchMedia('(max-width: 900px), (max-height: 500px)').matches); }
+  function isTouch() { return !!(R() && R().isTouch && R().isTouch()); }
+  UI.isMobile = isMobile;
   function countryName(cc) { return R() ? R().countryName(cc) : cc; }
   function countryColor(cc) { return R() ? R().countryColor(cc) : '#888'; }
   function staticCountry(cc) { return (window.COUNTRY_DATA && window.COUNTRY_DATA[cc]) || {}; }
@@ -131,6 +135,119 @@
   function swatch(cc) { return '<span class="swatch" style="background:' + esc(countryColor(cc)) + '"></span>'; }
 
   // ===========================================================================
+  // Ikony: inline SVG, jeden styl (obrys 1.75, viewBox 24) — wygląd w css/style.css (.ico)
+  // ===========================================================================
+  const ICONS = {
+    calendar: '<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    coins: '<ellipse cx="12" cy="6.5" rx="7" ry="3"/><path d="M5 6.5v5c0 1.66 3.13 3 7 3s7-1.34 7-3v-5"/><path d="M5 11.5v5c0 1.66 3.13 3 7 3s7-1.34 7-3v-5"/>',
+    trend: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>',
+    users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M21.5 20c0-3-1.8-5.2-4.5-5.8"/>',
+    shield: '<path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>',
+    swords: '<path d="M14.5 17.5L3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2"/><path d="M14.5 6.5L18 3h3v3l-3.5 3.5M5 14l4 4M7 17l-3 3M3 19l2 2"/>',
+    next: '<path d="M5 5.5l9.5 6.5L5 18.5z"/><path d="M19 5v14"/>',
+    handshake: '<path d="M11 17l2 2a1 1 0 1 0 3-3"/><path d="M14 14l2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="M21 3l1 11h-2M3 3L2 14l6.5 6.5a1 1 0 1 0 3-3M3 4h8"/>',
+    sparkles: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    x: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+    chevron: '<path d="M6 9l6 6 6-6"/>',
+    factory: '<path d="M3.5 20.5h17"/><path d="M4.5 20.5V10l5 3v-3l5 3V4h4v16.5"/><path d="M8 17h2M12 17h2"/>',
+    fort: '<path d="M4 20.5V8h3v3h3V8h4v3h3V8h3v12.5z"/><path d="M10 20.5v-4a2 2 0 0 1 4 0v4"/>',
+    anchor: '<circle cx="12" cy="5" r="2"/><path d="M12 7v14M5 13a7 7 0 0 0 14 0M3 13h4M17 13h4M9 10h6"/>',
+    tent: '<path d="M3 20.5L12 4l9 16.5z"/><path d="M12 20.5l-3-6h6z"/>',
+    ship: '<path d="M3 14.5h18l-2.5 5h-13z"/><path d="M6 14.5V10h9l3 4.5"/><path d="M9 10V6h3v4"/>',
+    flag: '<path d="M5 21V4"/><path d="M5 4h12l-2.5 4.5L17 13H5"/>',
+    chart: '<path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/>',
+    mountain: '<path d="M3 19l6-10 4 6 2-3 6 7z"/>',
+    save: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
+    keyboard: '<rect x="3" y="6" width="18" height="12" rx="2.5"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>',
+    logout: '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+    alert: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    pin: '<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+    landmark: '<path d="M3 21h18M5 18h14M6 18v-7M10 18v-7M14 18v-7M18 18v-7M3 9l9-6 9 6z"/>',
+    download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    upload: '<path d="M12 16V5M7 10l5-5 5 5M5 20h14"/>',
+    mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/>'
+  };
+  function icon(name, cls) {
+    return '<svg class="ico' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[name] || '') + '</svg>';
+  }
+  UI.icon = icon;
+  const BUILDING_ICONS = { factory: 'factory', fort: 'fort', port: 'anchor', barracks: 'tent' };
+  const TOAST_ICONS = { war: 'alert', bad: 'alert', battle: 'swords', peace: 'check', ok: 'check' };
+
+  // Suwaki: wypełnienie toru do wartości (zmienna CSS --p)
+  function syncRange(el) {
+    const min = +el.min || 0, max = el.max === '' ? 100 : +el.max, v = +el.value;
+    el.style.setProperty('--p', (max > min ? ((v - min) / (max - min)) * 100 : 0) + '%');
+  }
+  function syncRangesIn(root) {
+    if (!root || !root.querySelectorAll) return;
+    if (root.matches && root.matches('input[type=range]')) syncRange(root);
+    root.querySelectorAll('input[type=range]').forEach(syncRange);
+  }
+  function bindRangeStyling() {
+    document.addEventListener('input', (e) => { if (e.target && e.target.type === 'range') syncRange(e.target); }, true);
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) for (const n of m.addedNodes) if (n.nodeType === 1 && n.id !== 'tooltip' && !n.closest('#tooltip')) syncRangesIn(n);
+    });
+    mo.observe($('app'), { childList: true, subtree: true });
+    syncRangesIn(document);
+  }
+
+  // Ikony i wrappery dla statycznego markupu z index.html (bez zmiany identyfikatorów i logiki)
+  function decorateChrome() {
+    const statIcons = { 'tb-date': 'calendar', 'tb-treasury': 'coins', 'tb-balance': 'trend', 'tb-manpower': 'users', 'tb-stability': 'shield', 'tb-army': 'swords' };
+    document.querySelectorAll('#topbar .tb-stat').forEach((s) => {
+      const val = s.querySelector('.val'), ic = statIcons[val && val.id];
+      if (ic && !s.querySelector('.tb-ico')) s.insertAdjacentHTML('afterbegin', '<span class="tb-ico">' + icon(ic) + '</span>');
+    });
+    const btnIcon = (id, name, keepLabel) => {
+      const b = $(id); if (!b || b.querySelector('.ico')) return;
+      const kbd = b.querySelector('kbd');
+      const label = Array.from(b.childNodes).filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim();
+      Array.from(b.childNodes).forEach((n) => { if (n.nodeType === 3) n.remove(); });
+      b.insertAdjacentHTML('afterbegin', icon(name) + (label ? '<span class="btn-label"' + (keepLabel ? ' data-keep' : '') + '>' + esc(label) + '</span>' : ''));
+      if (kbd) b.appendChild(kbd);
+      if (!b.getAttribute('aria-label')) b.setAttribute('aria-label', label || b.title || '');
+    };
+    btnIcon('btn-diplomacy', 'handshake');
+    btnIcon('btn-god', 'sparkles');
+    btnIcon('btn-endturn', 'next', true);
+    const menuBtn = $('btn-menu');
+    if (menuBtn && !menuBtn.querySelector('.ico')) { menuBtn.innerHTML = icon('menu'); menuBtn.classList.add('btn-icon'); menuBtn.setAttribute('aria-label', 'Menu'); }
+    const endLabel = document.querySelector('#btn-endturn .btn-label'); if (endLabel) endLabel.classList.remove('btn-label');
+    const god = $('tb-god'); if (god && !god.querySelector('.ico')) god.innerHTML = icon('sparkles') + 'GOD';
+    const menuIcons = { save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout' };
+    document.querySelectorAll('#menu .menu-item').forEach((b) => {
+      if (b.querySelector('.ico')) return;
+      const txt = document.createElement('span'); txt.textContent = b.textContent; b.textContent = '';
+      if (b.id === 'menu-god-toggle') { txt.id = 'menu-god-toggle-label'; }
+      b.insertAdjacentHTML('afterbegin', icon(menuIcons[b.dataset.act] || 'info'));
+      b.appendChild(txt);
+    });
+    const modeIcons = { political: 'flag', diplomatic: 'handshake', economic: 'chart', terrain: 'mountain' };
+    document.querySelectorAll('#mapmodes .mm-btn').forEach((b) => { const s = b.querySelector('.mm-ico'); if (s && !s.firstChild) s.innerHTML = icon(modeIcons[b.dataset.mode]); });
+    const lh = $('log-head');
+    if (lh && !lh.querySelector('.ico')) { lh.firstElementChild.insertAdjacentHTML('afterbegin', icon('clock', 'ico-sm')); $('log-toggle').innerHTML = icon('chevron', 'ico-sm'); }
+    const title = document.querySelector('.start-title');
+    if (title && !title.querySelector('.eyebrow')) title.insertAdjacentHTML('afterbegin', '<span class="eyebrow">Strategia turowa · Europa i Azja</span>');
+    const optGod = $('opt-god'), optWars = $('opt-wars');
+    if (optGod && !document.querySelector('.start-options')) {
+      const box = document.createElement('div'); box.className = 'start-options';
+      const l1 = optGod.closest('label'), l2 = optWars && optWars.closest('label');
+      l1.parentNode.insertBefore(box, l1);
+      box.appendChild(l1); if (l2) box.appendChild(l2);
+      l1.querySelector('span').innerHTML = 'God Mode<small>Nielimitowana kasa i rezerwy, narzędzia edycji</small>';
+      if (l2) l2.querySelector('span').innerHTML = 'Trwające konflikty 2026<small>Rosja–Ukraina, Izrael–Palestyna</small>';
+    }
+    const btnStart = $('btn-start'); if (btnStart && !btnStart.querySelector('.ico')) btnStart.insertAdjacentHTML('beforeend', icon('next'));
+    const btnLoad = $('btn-load'); if (btnLoad && !btnLoad.querySelector('.ico')) btnLoad.insertAdjacentHTML('afterbegin', icon('save'));
+  }
+
+  // ===========================================================================
   // Modale, toasty, potwierdzenia
   // ===========================================================================
   function openModal(opts) {
@@ -183,7 +300,7 @@
     const box = $('toasts');
     const el = document.createElement('div');
     el.className = 'toast ' + (kind || '');
-    el.textContent = text;
+    el.innerHTML = '<span class="toast-ico">' + icon(TOAST_ICONS[kind] || 'info') + '</span><span class="toast-txt">' + esc(text) + '</span>';
     box.appendChild(el);
     while (box.children.length > 6) box.firstChild.remove();
     setTimeout(() => { el.classList.add('fade'); setTimeout(() => el.remove(), 450); }, ms || 4200);
@@ -224,13 +341,15 @@
     if (!cc) { card.className = 'country-card empty'; card.textContent = 'Kliknij państwo na mapie lub wybierz z listy.'; return; }
     const d = staticCountry(cc);
     card.className = 'country-card';
-    card.innerHTML = '<h3>' + swatch(cc) + esc(countryName(cc)) + '</h3><div class="kv">' +
-      '<span class="k">PKB</span><span class="v">' + (d.gdp != null ? fmtInt(d.gdp) + ' mld $' : '—') + '</span>' +
-      '<span class="k">Populacja</span><span class="v">' + (d.pop != null ? fmtNum(d.pop, 1) + ' mln' : '—') + '</span>' +
-      '<span class="k">Armia</span><span class="v">' + (d.army != null ? fmtInt(d.army) + ' tys.' : '—') + '</span>' +
-      '<span class="k">Flota</span><span class="v">' + (d.navy != null ? fmtInt(d.navy) + ' ' + plural(d.navy, 'eskadra', 'eskadry', 'eskadr') : '—') + '</span>' +
-      '<span class="k">Ustrój</span><span class="v txt">' + esc(d.gov || '—') + (d.ideology ? ' · ' + esc(IDEOLOGY_PL[d.ideology] || d.ideology) : '') + '</span>' +
-      '<span class="k">Prowincje</span><span class="v">' + provincesOf(cc).length + '</span></div>';
+    const tile = (ic, k, v) => '<div class="stat-tile"><div class="k">' + icon(ic) + k + '</div><div class="v" title="' + esc(v) + '">' + v + '</div></div>';
+    card.innerHTML = '<h3>' + swatch(cc) + esc(countryName(cc)) + '</h3><div class="stat-grid">' +
+      tile('coins', 'PKB', d.gdp != null ? fmtInt(d.gdp) + ' mld $' : '—') +
+      tile('users', 'Ludność', d.pop != null ? fmtNum(d.pop, 1) + ' mln' : '—') +
+      tile('pin', 'Prowincje', String(provincesOf(cc).length)) +
+      tile('swords', 'Armia', d.army != null ? fmtInt(d.army) + ' tys.' : '—') +
+      tile('ship', 'Flota', d.navy != null ? fmtInt(d.navy) + ' esk.' : '—') +
+      tile('landmark', 'Ustrój', esc(d.ideology ? (IDEOLOGY_PL[d.ideology] || d.ideology) : (d.gov || '—'))) +
+      '</div>' + (d.gov ? '<div class="hint">' + esc(d.gov) + '</div>' : '');
   }
   function selectStartCountry(cc, center) {
     S.startCC = cc || null;
@@ -239,27 +358,41 @@
     renderStartList(); renderStartCard();
     const el = $('start-results').querySelector('.sel');
     if (el) el.scrollIntoView({ block: 'nearest' });
-    if (center && cc) R().centerOnCountry(cc, 0.9, startPanelWidth());
+    if (center && cc) { const o = startPanelOffsets(); R().centerOnCountry(cc, isMobile() ? 0.3 : 0.9, o[0], o[1]); }
     R().requestDraw();
   }
-  function startPanelWidth() { const el = document.querySelector('.start-panel'); return el ? el.offsetWidth + 18 : 0; }
+  // [lewy, dolny] fragment ekranu zasłonięty przez panel startowy (na telefonie w pionie panel jest na dole).
+  function startPanelOffsets() {
+    const el = document.querySelector('.start-panel');
+    if (!el || !el.offsetWidth) return [0, 0];
+    const r = el.getBoundingClientRect();
+    if (r.width >= window.innerWidth * 0.9) return [0, Math.max(0, window.innerHeight - r.top + 8)];
+    return [el.offsetWidth + 18, 0];
+  }
   function showStart() {
     S.inGame = false; S.sel = null; S.selProv = -1; S.godTool = null;
+    document.body.classList.remove('in-game', 'ob-open');
     ['topbar', 'mapmodes', 'log', 'province-panel', 'diplo-panel', 'god-panel', 'order-bar', 'menu', 'legend'].forEach((id) => $(id).classList.add('hidden'));
     $('start-screen').classList.remove('hidden');
     const v = R().view; v.startScreen = true; v.sel = null; v.selProv = -1; v.preview = null; v.pending = null;
     R().setMode('political');
     R().invalidate();
     selectStartCountry(S.startCC, false);
-    if (S.startCC) R().centerOnCountry(S.startCC, 0.9, startPanelWidth());
-    else { const c = R().lonLatToMap(42, 47); R().centerOn(c[0] - startPanelWidth() / 2 / 0.55, c[1], 0.55); }
+    centerStartView();
     if (!$('start-hint')) {
       const h = document.createElement('div'); h.id = 'start-hint'; h.className = 'start-hint';
-      h.textContent = 'Przeciągnij mapę, kółko myszy = zoom, kliknij państwo aby je wybrać';
+      h.textContent = isTouch() ? 'Przeciągnij mapę, rozsuń palce = zoom, stuknij państwo aby je wybrać'
+        : 'Przeciągnij mapę, kółko myszy = zoom, kliknij państwo aby je wybrać';
       $('start-screen').appendChild(h);
     }
   }
   UI.showStart = showStart;
+  function centerStartView() {
+    const o = startPanelOffsets();
+    if (S.startCC) { R().centerOnCountry(S.startCC, isMobile() ? 0.3 : 0.9, o[0], o[1]); return; }
+    const z = isMobile() ? 0.3 : 0.55, c = R().lonLatToMap(42, 47);
+    R().centerOn(c[0] - o[0] / 2 / z, c[1] + o[1] / 2 / z, z);
+  }
   function startGame() {
     if (!S.startCC) return;
     const opts = { player: S.startCC, god: $('opt-god').checked, startWars: $('opt-wars').checked, seed: Math.floor(Math.random() * 1e9) };
@@ -281,7 +414,10 @@
   function enterGame(centerView) {
     S.inGame = true; S.sel = null; S.selProv = -1; S.diploCC = null; S.godTool = null; S.answered = {}; S.gameOverShown = false; S.proposalOpen = false;
     $('start-screen').classList.add('hidden');
+    document.body.classList.add('in-game');
     ['topbar', 'mapmodes', 'log'].forEach((id) => $(id).classList.remove('hidden'));
+    if (isMobile()) $('log').classList.add('collapsed');
+    setTopbarExpanded(false);
     ['province-panel', 'diplo-panel', 'god-panel', 'order-bar'].forEach((id) => $(id).classList.add('hidden'));
     const v = R().view; v.startScreen = false; v.highlightCC = null; v.sel = null; v.selProv = -1; v.preview = null; v.pending = null;
     S.godCC = me();
@@ -311,7 +447,8 @@
     const cc = me(), c = liveCountry(cc) || {};
     $('tb-swatch').style.background = countryColor(cc);
     $('tb-name').textContent = countryName(cc);
-    $('tb-date').textContent = dateStr();
+    $('tb-date').textContent = isMobile() ? shortDate(dateStr()) : dateStr();
+    $('tb-date').parentNode.title = 'Data: ' + dateStr();
     const god = isGod();
     $('tb-treasury').textContent = god ? '∞' : fmtBn(c.treasury || 0);
     $('tb-treasury').className = 'val num' + (!god && c.treasury < 0 ? ' neg' : '');
@@ -325,8 +462,18 @@
     $('tb-army').textContent = fmtK(armiesOf(cc).reduce((s, a) => s + (a.size || 0), 0));
     $('tb-god').classList.toggle('hidden', !god);
     $('btn-god').classList.toggle('hidden', !god);
-    $('menu-god-toggle').textContent = god ? 'Wyłącz God Mode' : 'Włącz God Mode';
+    ($('menu-god-toggle-label') || $('menu-god-toggle')).textContent = god ? 'Wyłącz God Mode' : 'Włącz God Mode';
     $('btn-endturn').disabled = S.busy;
+  }
+  // "5 stycznia 2026" → "5 sty 2026" (kompaktowy pasek na telefonie)
+  function shortDate(t) {
+    return String(t).replace(/\b(stycznia|lutego|marca|kwietnia|maja|czerwca|lipca|sierpnia|września|października|listopada|grudnia)\b/,
+      (m) => ({ stycznia: 'sty', lutego: 'lut', marca: 'mar', kwietnia: 'kwi', maja: 'maj', czerwca: 'cze', lipca: 'lip', sierpnia: 'sie', 'września': 'wrz', 'października': 'paź', listopada: 'lis', grudnia: 'gru' }[m]));
+  }
+  function setTopbarExpanded(on) {
+    $('topbar').classList.toggle('tb-expanded', !!on);
+    $('btn-more').classList.toggle('active', !!on);
+    $('btn-more').setAttribute('aria-expanded', on ? 'true' : 'false');
   }
   function toggleMenu(force) {
     const m = $('menu');
@@ -351,7 +498,10 @@
     const rows = [['Spacja', 'Koniec tury'], ['W A S D / strzałki', 'Przesuwanie mapy'], ['+ / −, kółko', 'Zoom'], ['1 – 4', 'Tryby mapy'],
       ['LPM na armii', 'Zaznacz armię'], ['Przeciągnij armię', 'Rozkaz ruchu'], ['PPM na prowincji', 'Rozkaz ruchu dla zaznaczonej jednostki'],
       ['Enter', 'Potwierdź rozkaz'], ['M', 'Scal armie w prowincji'], ['Esc', 'Anuluj / odznacz / zamknij']];
-    openModal({ title: 'Skróty klawiszowe', body: '<div class="shortcuts">' + rows.map((r) => '<kbd>' + esc(r[0]) + '</kbd><span>' + esc(r[1]) + '</span>').join('') + '</div>' });
+    if (isTouch()) rows.unshift(['1 palec', 'Przesuwanie mapy (z bezwładnością)'], ['2 palce', 'Zoom (rozsuń / zsuń) i przesuwanie'],
+      ['Stuknięcie', 'Wybór prowincji / armii'], ['Podwójne stuknięcie', 'Przybliżenie ×2'], ['Przytrzymanie', 'Informacje o prowincji'],
+      ['Przeciągnij armię', 'Rozkaz ruchu'], ['Armia zaznaczona + stuknij cel', 'Rozkaz ruchu (pasek z suwakiem)']);
+    openModal({ title: isTouch() ? 'Sterowanie' : 'Skróty klawiszowe', body: '<div class="shortcuts">' + rows.map((r) => '<kbd>' + esc(r[0]) + '</kbd><span>' + esc(r[1]) + '</span>').join('') + '</div>' });
   }
   function bindTopbar() {
     $('btn-endturn').addEventListener('click', endTurn);
@@ -359,6 +509,9 @@
     $('btn-diplomacy').addEventListener('click', () => toggleDiplomacy());
     $('btn-god').addEventListener('click', () => toggleGodPanel());
     $('tb-country').addEventListener('click', () => R().centerOnCountry(me(), 0.8));
+    $('btn-more').addEventListener('click', (e) => { e.stopPropagation(); setTopbarExpanded(!$('topbar').classList.contains('tb-expanded')); });
+    // Na telefonie rozwinięty pasek zwija się po wybraniu akcji z drugiego rzędu
+    $('topbar').addEventListener('click', (e) => { if (e.target.closest('button.tb-secondary')) setTopbarExpanded(false); });
     $('menu').addEventListener('click', (e) => { const b = e.target.closest('[data-act]'); if (b) onMenuAction(b.dataset.act); });
     document.addEventListener('mousedown', (e) => { if (!e.target.closest('#menu') && !e.target.closest('#btn-menu')) toggleMenu(false); });
   }
@@ -377,10 +530,10 @@
   function renderLegend() {
     const m = R().getMode(), el = $('legend');
     let html = '';
-    if (m === 'diplomatic') html = legendItem('#e0c068', 'Ty') + legendItem('#3b7dd8', 'Sojusznik') + legendItem('#4aa3a0', 'Pakt') + legendItem('#c0392b', 'Wojna') +
-      '<span class="li">Relacje <span class="grad" style="background:linear-gradient(90deg,#9b3b36,#6c7076,#3f9a52)"></span></span>';
-    else if (m === 'economic') html = '<span class="li">Rozwój i fabryki: niski <span class="grad" style="background:linear-gradient(90deg,#2b2f45,#7c6a2c,#f2d45c)"></span> wysoki</span>';
-    else if (m === 'terrain') html = [['#8fae5e', 'plains'], ['#b0a060', 'hills'], ['#8c7b6b', 'mountains'], ['#4f7f45', 'forest'], ['#d8c27e', 'desert'], ['#a9b8bd', 'tundra'], ['#2f7a4f', 'jungle']]
+    if (m === 'diplomatic') html = legendItem('#d9b86a', 'Ty') + legendItem('#5b8def', 'Sojusznik') + legendItem('#3fb8b0', 'Pakt') + legendItem('#e5484d', 'Wojna') +
+      '<span class="li">Relacje <span class="grad" style="background:linear-gradient(90deg,#94464a,#5d6673,#3f9466)"></span></span>';
+    else if (m === 'economic') html = '<span class="li">Rozwój i fabryki: niski <span class="grad" style="background:linear-gradient(90deg,#262a4a,#2c7d78,#d6e06c)"></span> wysoki</span>';
+    else if (m === 'terrain') html = [['#8fa865', 'plains'], ['#a99a63', 'hills'], ['#867a70', 'mountains'], ['#4e7a4c', 'forest'], ['#cdb882', 'desert'], ['#a3b2b8', 'tundra'], ['#33735a', 'jungle']]
       .map((t) => legendItem(t[0], TERRAIN_PL[t[1]])).join('');
     el.innerHTML = html;
     el.classList.toggle('hidden', !html || !S.inGame);
@@ -402,7 +555,13 @@
     R().view.preview = null;
     closeOrderBar();
     const obj = unitObj(S.sel);
-    if (obj) openProvince(obj.prov);
+    if (obj) {
+      openProvince(obj.prov);
+      // Telefon: panel prowincji zwinięty do nagłówka, żeby było widać mapę do wskazania celu.
+      if (isMobile()) $('province-panel').classList.add('sheet-collapsed');
+      if (isTouch() && obj.owner === me() && (S.touchHints = (S.touchHints || 0) + 1) <= 2)
+        toast('Stuknij prowincję docelową albo przeciągnij jednostkę na cel', '', 2600);
+    }
     R().requestDraw();
   }
   UI.selectUnit = selectUnit;
@@ -507,15 +666,16 @@
     if (S.sel.type === 'army') {
       const max = u.size, step = max > 20000 ? 500 : 100;
       const def = plan.kind === 'sea' && plan.capacity ? Math.min(max, Math.floor(plan.capacity / step) * step || max) : max;
-      html = '<div class="ob-head"><span class="ob-title">Armia ' + fmtK(u.size) + ' → ' + name + '</span>' + routeHtml + '</div>' +
+      html = '<div class="ob-head"><span class="ob-title">' + icon('swords') + 'Armia ' + fmtK(u.size) + ' → ' + name + '</span>' + routeHtml + '</div>' +
         '<div class="ob-row"><span class="dim">Wyślij:</span><input type="range" id="ob-size" min="' + Math.min(step, max) + '" max="' + max + '" step="' + step + '" value="' + def + '"' + (plan.ok ? '' : ' disabled') + '>' +
         '<span class="ob-count" id="ob-count"></span>' + buttons + '</div>';
     } else {
-      html = '<div class="ob-head"><span class="ob-title">Flota (' + u.ships + ' ' + plural(u.ships, 'eskadra', 'eskadry', 'eskadr') + ') → ' + name + '</span>' + routeHtml + '</div>' +
+      html = '<div class="ob-head"><span class="ob-title">' + icon('ship') + 'Flota (' + u.ships + ' ' + plural(u.ships, 'eskadra', 'eskadry', 'eskadr') + ') → ' + name + '</span>' + routeHtml + '</div>' +
         '<div class="ob-row" style="justify-content:flex-end">' + buttons + '</div>';
     }
     bar.innerHTML = html;
     bar.classList.remove('hidden');
+    document.body.classList.add('ob-open');
     const slider = $('ob-size');
     if (slider) { const upd = () => { $('ob-count').innerHTML = '<b>' + fmtInt(+slider.value) + '</b> / ' + fmtInt(u.size); }; slider.addEventListener('input', upd); upd(); }
     $('ob-go').addEventListener('click', confirmOrder);
@@ -525,6 +685,7 @@
   function closeOrderBar() {
     $('order-bar').classList.add('hidden');
     $('order-bar').innerHTML = '';
+    document.body.classList.remove('ob-open');
     if (R()) R().view.pending = null;
   }
   function orderBarOpen() { return !$('order-bar').classList.contains('hidden'); }
@@ -553,7 +714,8 @@
   function openProvince(id) {
     if (id == null || id < 0) return;
     S.selProv = id; R().view.selProv = id;
-    $('province-panel').classList.remove('hidden');
+    if (isMobile()) { closeDiplomacy(); if (!S.godTool) closeGodPanel(); }
+    $('province-panel').classList.remove('hidden', 'sheet-collapsed', 'sheet-expanded');
     renderProvincePanel();
     R().requestDraw();
   }
@@ -567,7 +729,7 @@
     const id = S.selProv; if (id < 0 || !G()) return;
     const ps = provStatic(id), pd = provDyn(id), owner = pd.owner, ctrl = pd.ctrl || owner;
     const mine = owner === me();
-    let html = '<div class="panel-head">' + swatch(owner) + '<h2>' + esc(ps.name) + '</h2><button class="close" data-act="close" title="Zamknij (Esc)">×</button></div><div class="panel-body">';
+    let html = '<div class="panel-head">' + swatch(owner) + '<h2>' + esc(ps.name) + '</h2><button class="close" data-act="close" title="Zamknij (Esc)" aria-label="Zamknij">' + icon('x') + '</button></div><div class="panel-body">';
     html += provinceInfoSection(ps, pd, owner, ctrl);
     html += provinceUnitsSection(id);
     if (mine) html += buildingsSection(id, pd) + recruitSection(id, ctrl) + shipsSection(id, ps, pd);
@@ -608,7 +770,7 @@
     });
     fleets.forEach((f) => {
       const sel = S.sel && S.sel.type === 'fleet' && S.sel.id === f.id;
-      h += '<div class="army-row' + (sel ? ' sel' : '') + '" data-fleet="' + esc(f.id) + '"><span class="army-chip" style="background:#0b2034;color:#cfe8ff;border-color:' + countryColor(f.owner) + '">⛴ ' + f.ships +
+      h += '<div class="army-row' + (sel ? ' sel' : '') + '" data-fleet="' + esc(f.id) + '"><span class="army-chip" style="background:#0b2034;color:#cfe8ff;border-color:' + countryColor(f.owner) + '">' + icon('ship') + f.ships +
         '</span><span>Flota: ' + esc(countryName(f.owner)) + '</span><span class="faint" style="margin-left:auto">' + ((f.cargo || []).length ? 'ładunek: ' + f.cargo.length : (f.path && f.path.length ? 'w rejsie' : 'w porcie')) + '</span></div>';
     });
     const selA = S.sel && S.sel.type === 'army' ? unitObj(S.sel) : null;
@@ -617,8 +779,9 @@
       h += '<div class="row-actions">' +
         (myCount > 1 ? '<button class="btn btn-sm" data-act="merge">Scal armie <kbd>M</kbd></button>' : '') +
         (selA.path && selA.path.length ? '<button class="btn btn-sm" data-act="cancel">Zatrzymaj</button>' : '') +
+        (selA.embarked || !has('diplomacy.giveTroops') ? '' : '<button class="btn btn-sm" data-act="give">Przekaż armię…</button>') +
         '<button class="btn btn-sm btn-danger" data-act="disband">Rozwiąż</button></div>' +
-        '<div class="hint">Przeciągnij armię na mapie lub kliknij PPM na cel, aby wydać rozkaz.</div>';
+        '<div class="hint">' + (isTouch() ? 'Przeciągnij armię na cel lub stuknij prowincję docelową, aby wydać rozkaz.' : 'Przeciągnij armię na mapie lub kliknij PPM na cel, aby wydać rozkaz.') + '</div>';
     } else if (myCount > 1) h += '<div class="row-actions"><button class="btn btn-sm" data-act="merge">Scal armie <kbd>M</kbd></button></div>';
     return h + '</div>';
   }
@@ -632,7 +795,7 @@
       let pips = ''; for (let i = 0; i < max; i++) pips += '<i class="pip' + (i < lvl ? ' on' : '') + '"></i>';
       const price = can.cost != null ? can.cost : has('economy.buildCost') ? call('economy.buildCost', [me(), id, type], def.cost) : def.cost;
       const cost = isGod() ? 'darmo' : fmtNum(price, 1) + ' mld';
-      h += '<div class="build-row"><div title="' + esc(def.desc || '') + '"><span class="build-name">' + esc(def.name || type) + '</span><span class="pips">' + pips + '</span></div>' +
+      h += '<div class="build-row"><div title="' + esc(def.desc || '') + '"><span class="build-ico">' + icon(BUILDING_ICONS[type] || 'landmark') + '</span><span class="build-txt"><span class="build-name">' + esc(def.name || type) + '</span><span class="pips">' + pips + '</span></span></div>' +
         '<span class="build-lvl">' + cost + (def.turns && !isGod() ? ' · ' + def.turns + 't' : '') + '</span>' +
         '<button class="btn btn-sm" data-build="' + type + '"' + (can.ok ? '' : ' disabled') + ' title="' + esc(can.ok ? 'Buduj ' + (def.name || type) + (def.desc ? ' — ' + def.desc : '') : can.reason || '') + '">Buduj</button></div>';
     });
@@ -737,6 +900,7 @@
     if (act === 'close') closeProvince();
     else if (act === 'diplo') openDiplomacy(provDyn(id).owner);
     else if (act === 'merge') mergeHere(id);
+    else if (act === 'give') openGiveArmyModal(id);
     else if (act === 'cancel' && S.sel) { call('military.cancel', [S.sel.id]); refreshAll(); }
     else if (act === 'disband' && S.sel) {
       const a = unitObj(S.sel);
@@ -761,8 +925,9 @@
   function toggleDiplomacy() { if ($('diplo-panel').classList.contains('hidden')) openDiplomacy(S.diploCC); else closeDiplomacy(); }
   function openDiplomacy(cc) {
     $('god-panel').classList.add('hidden');
+    if (isMobile() && S.selProv >= 0) closeProvince();
     if (cc && cc !== me()) S.diploCC = cc;
-    $('diplo-panel').classList.remove('hidden');
+    $('diplo-panel').classList.remove('hidden', 'sheet-collapsed', 'sheet-expanded');
     $('btn-diplomacy').classList.add('active');
     renderDiplomacy();
   }
@@ -775,7 +940,7 @@
   function renderDiplomacy() {
     const panel = $('diplo-panel');
     const focused = document.activeElement && document.activeElement.id === 'dip-search';
-    let html = '<div class="panel-head"><h2>Dyplomacja</h2><button class="close" data-act="close" title="Zamknij (Esc)">×</button></div><div class="panel-body">';
+    let html = '<div class="panel-head"><h2>Dyplomacja</h2><button class="close" data-act="close" title="Zamknij (Esc)" aria-label="Zamknij">' + icon('x') + '</button></div><div class="panel-body">';
     html += '<div class="section"><input type="search" id="dip-search" placeholder="Szukaj państwa…" value="' + esc(S.diploQuery) + '" style="width:100%"></div>';
     html += '<div class="section"><div class="country-list" id="dip-list" style="max-height:200px">' + diploListHtml() + '</div></div>';
     if (S.diploCC && liveCountry(S.diploCC)) html += diploDetailHtml(S.diploCC);
@@ -796,14 +961,15 @@
     return list.map((cc) => {
       const r = Math.round(rel(p, cc));
       return '<div class="country-item' + (cc === S.diploCC ? ' sel' : '') + '" data-cc="' + esc(cc) + '">' + swatch(cc) + '<span class="name">' + esc(countryName(cc)) + '</span>' +
-        statusTags(cc) + '<span class="rel ' + relClass(r) + '">' + (r > 0 ? '+' : '') + r + '</span></div>';
+        statusTags(cc) + '<span class="relmini" title="Relacje: ' + r + '"><i class="' + (r >= 0 ? 'up' : 'down') + '" style="width:' + (Math.min(100, Math.abs(r)) / 2) + '%"></i></span>' +
+        '<span class="rel ' + relClass(r) + '">' + (r > 0 ? '+' : '') + r + '</span></div>';
     }).join('') || '<div class="country-item faint">Brak wyników</div>';
   }
   function diploDetailHtml(cc) {
     const p = me(), c = liveCountry(cc), d = staticCountry(cc), r = Math.round(rel(p, cc));
     const war = atWar(p, cc), ally = allied(p, cc), pact = hasPact(p, cc), truce = hasTruce(p, cc);
     const armySum = armiesOf(cc).reduce((s, a) => s + (a.size || 0), 0);
-    let h = '<div class="section"><div class="section-title">' + swatch(cc) + esc(countryName(cc)) + '</div>';
+    let h = '<div class="section diplo-card"><div class="section-title">' + swatch(cc) + esc(countryName(cc)) + '</div>';
     h += '<div class="kv"><span class="k">Relacje</span><span class="v ' + relClass(r) + '">' + (r > 0 ? '+' : '') + r + '</span></div>';
     h += '<div class="relbar"><i style="left:' + ((r + 100) / 2) + '%"></i></div>';
     h += '<div style="margin:6px 0">' + (statusTags(cc) || '<span class="tag">Neutralny</span>') + '</div>';
@@ -822,7 +988,7 @@
     h += '<button class="btn" data-dip="improve" title="Koszt ok. ' + fmtNum(impCost, 1) + ' mld $">Popraw relacje</button>';
     h += '<button class="btn" data-dip="insult">Obraź</button>';
     h += '<button class="btn btn-ghost" data-dip="show">Pokaż na mapie</button>';
-    return h + '</div></div>';
+    return h + '</div>' + countryWarsHtml(cc) + aidSectionHtml(cc) + '</div>';
   }
   function warScoreFor(war, cc) {
     const side = (war.attackers || []).indexOf(cc) >= 0 ? 1 : -1;
@@ -846,7 +1012,8 @@
       const names = (l) => (l || []).map((c) => esc(countryName(c))).join(', ');
       h += '<div class="war-item"><div class="war-sides"><span>' + names(leftSide) + '</span><span class="faint">vs</span><span>' + names(rightSide) + '</span></div>' +
         '<div class="scorebar"><i style="width:' + ((sc + 100) / 2) + '%"></i></div>' +
-        '<div class="war-score"><span>Wynik wojny: ' + (sc > 0 ? '+' : '') + sc + '</span><span>od tury ' + (w.start != null ? w.start : '?') + '</span></div></div>';
+        '<div class="war-score"><span>Wynik wojny: ' + (sc > 0 ? '+' : '') + sc + '</span><span>od tury ' + (w.start != null ? w.start : '?') + '</span></div>' +
+        losingLineHtml(w) + '</div>';
     });
     return h + '</div>';
   }
@@ -856,6 +1023,7 @@
     $('dip-search').addEventListener('input', (e) => { S.diploQuery = e.target.value; $('dip-list').innerHTML = diploListHtml(); });
     $('dip-list').addEventListener('click', (e) => { const it = e.target.closest('[data-cc]'); if (it) { S.diploCC = it.dataset.cc; renderDiplomacy(); } });
     panel.querySelectorAll('[data-dip]').forEach((b) => b.addEventListener('click', () => diploAction(b.dataset.dip, S.diploCC)));
+    bindAidSection(S.diploCC);
   }
   function diploAction(act, cc) {
     const p = me(), name = countryName(cc);
@@ -880,13 +1048,111 @@
   }
 
   // ===========================================================================
+  // Wsparcie innych państw (pieniądze, wojsko) + kto przegrywa wojnę
+  // ===========================================================================
+  /** Strona przegrywająca wojnę (wynik ≤ −10) albo null przy wyrównanej wojnie. */
+  function losingSide(w) {
+    const a = (w.attackers || [])[0]; if (!a) return null;
+    const sc = Math.round(warScoreFor(w, a));
+    if (sc <= -10) return { side: w.attackers, score: sc };
+    if (sc >= 10) return { side: w.defenders, score: -sc };
+    return null;
+  }
+  function losingLineHtml(w) {
+    const l = losingSide(w);
+    if (!l) return '<div class="hint">Wojna wyrównana.</div>';
+    return '<div class="hint"><span class="neg">Przegrywa:</span> ' + l.side.map((c) => esc(countryName(c))).join(', ') + ' (' + l.score + ')</div>';
+  }
+  /** Wojny wybranego państwa z wynikiem z jego perspektywy (na karcie dyplomacji). */
+  function countryWarsHtml(cc) {
+    const wars = (G().wars || []).filter((w) => (w.attackers || []).concat(w.defenders || []).indexOf(cc) >= 0);
+    if (!wars.length) return '';
+    return '<div class="kv" style="margin-top:10px">' + wars.map((w) => {
+      const foes = ((w.attackers || []).indexOf(cc) >= 0 ? w.defenders : w.attackers) || [];
+      const sc = Math.round(warScoreFor(w, cc));
+      const st = sc <= -10 ? '<span class="neg">przegrywa</span>' : sc >= 10 ? '<span class="pos">wygrywa</span>' : '<span class="dim">remis</span>';
+      return '<span class="k">Wojna z</span><span class="v txt">' + foes.map((c) => esc(countryName(c))).join(', ') + ' · ' + (sc > 0 ? '+' : '') + sc + ' ' + st + '</span>';
+    }).join('') + '</div>';
+  }
+  function aidMoneyMax() {
+    const c = liveCountry(me()) || {};
+    return isGod() ? 1000 : Math.max(0, Math.floor(c.treasury || 0));
+  }
+  function aidTroopsMaxK(sourceProv) {
+    return Math.floor((call('diplomacy.availableTroops', [me(), sourceProv], 0) || 0) / 1000);
+  }
+  function aidSectionHtml(cc) {
+    if (!has('diplomacy.giveMoney')) return '';
+    const p = me(), war = atWar(p, cc);
+    const mMax = aidMoneyMax(), tMax = aidTroopsMaxK();
+    S.aidMoney = Math.max(1, Math.min(S.aidMoney || 10, Math.max(1, mMax)));
+    S.aidTroopsK = Math.max(1, Math.min(S.aidTroopsK || 10, Math.max(1, tMax)));
+    const troopReason = call('diplomacy.aidTroopsReason', [p, cc], null);
+    let h = '<div class="section-title" style="margin-top:12px">Wsparcie</div>';
+    if (war) return h + '<div class="hint">Nie można wspierać państwa, z którym jesteś w wojnie.</div>';
+    h += '<div class="slider-row"><input type="range" id="aid-money" min="1" max="' + Math.max(1, mMax) + '" value="' + S.aidMoney + '"' + (mMax < 1 ? ' disabled' : '') + '>' +
+      '<span class="num" id="aid-money-val">' + fmtInt(S.aidMoney) + ' mld $</span></div>' +
+      '<div class="row-actions" style="margin-top:6px"><button class="btn btn-sm btn-ok" id="aid-money-go"' + (mMax < 1 ? ' disabled title="Pusty skarbiec"' : '') + '>Wyślij pieniądze</button>' +
+      '<span class="faint">' + (isGod() ? 'God Mode: bez kosztu' : 'skarbiec: ' + fmtBn((liveCountry(p) || {}).treasury || 0)) + '</span></div>';
+    h += '<div class="slider-row" style="margin-top:10px"><input type="range" id="aid-troops" min="1" max="' + Math.max(1, tMax) + '" value="' + S.aidTroopsK + '"' + (tMax < 1 || troopReason ? ' disabled' : '') + '>' +
+      '<span class="num" id="aid-troops-val">' + fmtInt(S.aidTroopsK) + ' tys.</span></div>' +
+      '<div class="row-actions" style="margin-top:6px"><button class="btn btn-sm btn-ok" id="aid-troops-go"' + (tMax < 1 || troopReason ? ' disabled' : '') + '>Przekaż wojsko</button>' +
+      '<span class="faint">dostępne: ' + fmtInt(tMax) + ' tys.</span></div>';
+    if (troopReason) h += '<div class="reason">' + esc(troopReason) + '</div>';
+    else if (tMax < 1) h += '<div class="reason">Brak stojących armii do przekazania (zaokrętowane lub w walce się nie liczą).</div>';
+    return h + '<div class="hint">Wojsko trafia do stolicy odbiorcy (albo do prowincji źródłowej, gdy leży na jego lub sojuszniczej ziemi).</div>';
+  }
+  function bindAidSection(cc) {
+    const m = $('aid-money'), t = $('aid-troops');
+    if (m) m.addEventListener('input', () => { S.aidMoney = +m.value; $('aid-money-val').textContent = fmtInt(S.aidMoney) + ' mld $'; });
+    if (t) t.addEventListener('input', () => { S.aidTroopsK = +t.value; $('aid-troops-val').textContent = fmtInt(S.aidTroopsK) + ' tys.'; });
+    const after = () => { validateSelection(); R().invalidate(); refreshAll(); };
+    const mg = $('aid-money-go'), tg = $('aid-troops-go');
+    if (mg) mg.addEventListener('click', () => { resultToast(call('diplomacy.giveMoney', [me(), cc, S.aidMoney], null), 'Wysłano pieniądze'); after(); });
+    if (tg) tg.addEventListener('click', () => { resultToast(call('diplomacy.giveTroops', [me(), cc, S.aidTroopsK >= aidTroopsMaxK() ? call('diplomacy.availableTroops', [me()], 0) : S.aidTroopsK * 1000], null), 'Przekazano wojsko'); after(); });
+  }
+  /** Kandydaci do przyjęcia wojska: relacja ≥ 0, bez wojny z nami; najpierw sojusznicy i państwa w wojnie (przegrywające). */
+  function aidCandidates() {
+    const p = me();
+    const warScoreOf = (cc) => (G().wars || []).reduce((m, w) => ((w.attackers || []).concat(w.defenders || []).indexOf(cc) >= 0 ? Math.min(m, warScoreFor(w, cc)) : m), 999);
+    return aliveCountries().filter((cc) => cc !== p && !atWar(p, cc) && rel(p, cc) >= 0)
+      .map((cc) => ({ cc, ally: allied(p, cc), score: warScoreOf(cc), r: rel(p, cc), reason: call('diplomacy.aidTroopsReason', [p, cc], null) }))
+      .sort((a, b) => (b.ally - a.ally) || ((b.score < 999) - (a.score < 999)) || (a.score - b.score) || (b.r - a.r))
+      .slice(0, 30);
+  }
+  function openGiveArmyModal(provId) {
+    const a = unitObj(S.sel);
+    if (!a || a.owner !== me() || a.embarked) return;
+    const avail = call('diplomacy.availableTroops', [me(), provId], a.size) || 0;
+    const maxK = Math.max(1, Math.floor(avail / 1000));
+    let k = maxK;
+    const cands = aidCandidates();
+    const rows = cands.map((c) => {
+      const war = c.score < 999 ? ' · wojna ' + (c.score > 0 ? '+' : '') + Math.round(c.score) : '';
+      return '<div class="country-item" data-give="' + esc(c.cc) + '"' + (c.reason ? ' title="' + esc(c.reason) + '" style="opacity:.5"' : '') + '>' + swatch(c.cc) +
+        '<span class="name">' + esc(countryName(c.cc)) + '</span>' + statusTags(c.cc) + '<span class="mono">' + (c.r > 0 ? '+' : '') + Math.round(c.r) + war + '</span></div>';
+    }).join('') || '<div class="hint">Brak państw z relacjami ≥ 0, którym można przekazać wojsko.</div>';
+    const body = '<div class="slider-row"><span class="dim">Ile:</span><input type="range" id="give-k" min="1" max="' + maxK + '" value="' + k + '"><span class="num" id="give-k-val">' + fmtInt(k) + ' tys.</span></div>' +
+      '<div class="hint" style="margin:6px 0">Wybierz państwo (sojusznicy i państwa w wojnie na górze):</div><div class="country-list" style="max-height:300px">' + rows + '</div>';
+    openModal({ title: 'Przekaż armię (' + esc(provStatic(provId).name) + ')', body, buttons: [{ label: 'Anuluj' }], onOpen: (el, close) => {
+      const s = el.querySelector('#give-k');
+      s.addEventListener('input', () => { k = +s.value; el.querySelector('#give-k-val').textContent = fmtInt(k) + ' tys.'; });
+      el.querySelectorAll('[data-give]').forEach((row) => row.addEventListener('click', () => {
+        const res = call('diplomacy.giveTroops', [me(), row.dataset.give, k >= maxK ? avail : k * 1000, provId], null);
+        if (resultToast(res, 'Przekazano wojsko')) { close(); validateSelection(); R().invalidate(); refreshAll(); }
+      }));
+    } });
+  }
+
+  // ===========================================================================
   // Panel God Mode
   // ===========================================================================
   function toggleGodPanel() { if ($('god-panel').classList.contains('hidden')) openGodPanel(); else closeGodPanel(); }
   function openGodPanel() {
     if (!isGod()) return;
     closeDiplomacy();
-    $('god-panel').classList.remove('hidden');
+    if (isMobile() && S.selProv >= 0) closeProvince();
+    $('god-panel').classList.remove('hidden', 'sheet-collapsed', 'sheet-expanded');
     $('btn-god').classList.add('active');
     renderGodPanel();
   }
@@ -903,7 +1169,7 @@
     const a = S.godCC || me(), b = S.godB || (S.diploCC && S.diploCC !== a ? S.diploCC : aliveCountries().find((c) => c !== a));
     S.godB = b;
     const relV = Math.round(rel(a, b));
-    let h = '<div class="panel-head"><span class="god-badge">GOD</span><h2>Narzędzia God Mode</h2><button class="close" data-act="close" title="Zamknij">×</button></div><div class="panel-body">';
+    let h = '<div class="panel-head"><span class="god-badge">' + icon('sparkles') + 'GOD</span><h2>Narzędzia God Mode</h2><button class="close" data-act="close" title="Zamknij" aria-label="Zamknij">' + icon('x') + '</button></div><div class="panel-body">';
     h += '<div class="section"><label class="check"><input type="checkbox" id="god-on"' + (isGod() ? ' checked' : '') + '> <span>God Mode (nielimitowana kasa)</span></label></div>';
     h += '<div class="section"><div class="section-title">Narzędzia mapy</div>';
     h += '<label class="field"><span>Państwo docelowe</span><select id="god-cc">' + countryOptions(a) + '</select></label>';
@@ -934,6 +1200,7 @@
       S.godTool = S.godTool === b.dataset.tool ? null : b.dataset.tool;
       if (S.godTool && S.sel) deselect();
       updateCursor(); renderGodPanel();
+      if (S.godTool && isMobile()) $('god-panel').classList.add('sheet-collapsed');   // odsłoń mapę do klikania
     }));
     panel.querySelectorAll('[data-god]').forEach((b) => b.addEventListener('click', () => godAction(b.dataset.god)));
   }
@@ -984,7 +1251,7 @@
       (info.savedAt ? '<br><span class="faint">zapisano ' + esc(new Date(info.savedAt).toLocaleString('pl-PL')) + '</span>' : '') : '<span class="faint">pusty</span>';
     const saveBtn = slot === 'auto' ? '' : '<button class="btn btn-sm" data-save="' + slot + '"' + (inGame ? '' : ' disabled') + '>Zapisz</button>';
     const delBtn = slot === 'auto' ? '' : '<button class="btn btn-sm btn-ghost" data-del="' + slot + '"' + (info ? '' : ' disabled') + '>Usuń</button>';
-    return '<div class="slot"><span class="slot-name">' + label + '</span><span class="slot-info">' + desc + '</span><span class="slot-actions">' + saveBtn +
+    return '<div class="slot"><span class="slot-name">' + icon(slot === 'auto' ? 'clock' : 'save') + label + '</span><span class="slot-info">' + desc + '</span><span class="slot-actions">' + saveBtn +
       '<button class="btn btn-sm btn-primary" data-load="' + slot + '"' + (info ? '' : ' disabled') + '>Wczytaj</button>' + delBtn + '</span></div>';
   }
   function saveMenuHtml() {
@@ -994,8 +1261,8 @@
     for (let i = 1; i <= 5; i++) h += slotRowHtml(i, bySlot[i], 'Slot ' + i);
     const auto = bySlot.auto || bySlot.autosave || bySlot[0] || (autosaveExists() ? { player: '?', turn: '?', date: '' } : null);
     h += slotRowHtml('auto', auto, 'Autozapis');
-    h += '<div class="row-actions" style="margin-top:12px"><button class="btn" id="sv-export"' + (S.inGame ? '' : ' disabled') + '>Eksportuj JSON</button>' +
-      '<button class="btn" id="sv-import">Importuj JSON…</button><input type="file" id="sv-file" accept=".json,application/json" class="hidden"></div>';
+    h += '<div class="row-actions" style="margin-top:12px"><button class="btn" id="sv-export"' + (S.inGame ? '' : ' disabled') + '>' + icon('download') + 'Eksportuj JSON</button>' +
+      '<button class="btn" id="sv-import">' + icon('upload') + 'Importuj JSON…</button><input type="file" id="sv-file" accept=".json,application/json" class="hidden"></div>';
     return h;
   }
   function openSaveMenu() {
@@ -1163,7 +1430,7 @@
       const u = unit.type === 'army' ? (G().armies || {})[unit.id] : (G().fleets || {})[unit.id];
       if (u) {
         if (unit.type === 'army') return '<div class="tt-title">' + swatch(u.owner) + ' Armia: ' + esc(countryName(u.owner)) + '</div><div class="tt-row">Żołnierze: <b class="num">' + fmtInt(u.size) + '</b></div><div class="tt-row">' + esc(armyStatus(u)) + '</div>' +
-          (u.owner === me() ? '<div class="tt-row faint">Przeciągnij na cel lub kliknij i PPM na cel</div>' : '');
+          (u.owner === me() ? '<div class="tt-row faint">' + (isTouch() ? 'Przeciągnij na cel lub stuknij armię, potem cel' : 'Przeciągnij na cel lub kliknij i PPM na cel') + '</div>' : '');
         return '<div class="tt-title">' + swatch(u.owner) + ' Flota: ' + esc(countryName(u.owner)) + '</div><div class="tt-row">Eskadry: <b class="num">' + fmtInt(u.ships) + '</b></div>' +
           ((u.cargo || []).length ? '<div class="tt-row">Ładunek: <b>' + u.cargo.length + ' ' + plural(u.cargo.length, 'armia', 'armie', 'armii') + '</b></div>' : '');
       }
@@ -1183,7 +1450,7 @@
         }).join('') + '</div>';
       }
       const pv = R().view.preview;
-      if (pv && pv.target === id) h += '<div class="tt-row" style="margin-top:4px;color:' + (pv.ok ? 'var(--accent)' : '#ff9c96') + '">' + esc(pv.ok ? (pv.kind === 'sea' ? 'Desant: ' : 'Ruch: ') + turnsText(pv.turns) + ' — PPM aby wydać rozkaz' : pv.reason || '') + '</div>';
+      if (pv && pv.target === id) h += '<div class="tt-row" style="margin-top:4px;color:' + (pv.ok ? 'var(--accent)' : '#ff9c96') + '">' + esc(pv.ok ? (pv.kind === 'sea' ? 'Desant: ' : 'Ruch: ') + turnsText(pv.turns) + (isTouch() ? '' : ' — PPM aby wydać rozkaz') : pv.reason || '') + '</div>';
     }
     return h;
   }
@@ -1210,6 +1477,10 @@
   function onUnitClick(u) {
     if (!S.inGame) return;
     if (S.godTool) { applyGodTool(u.prov); return; }
+    if (u.type === 'army' && u.owner === me() && !(S.sel && S.sel.id === u.id)) {
+      const lead = primaryArmyAt(u.prov);
+      if (lead && !(G().armies[u.id] && G().armies[u.id].path.length === 0)) u = { type: 'army', id: lead.id, owner: lead.owner, prov: lead.prov };
+    }
     if (u.owner === me()) {
       if (S.sel && S.sel.id === u.id) { deselect(); openProvince(u.prov); }
       else selectUnit(u);
@@ -1219,15 +1490,52 @@
     if (!S.inGame) { if (prov >= 0) selectStartCountry(R().ownerOf(prov), false); return; }
     if (S.godTool) { applyGodTool(prov); return; }
     if (orderBarOpen()) closeOrderBar();
+    const wasSel = unitObj(S.sel);
     if (S.sel) deselect();
+    // Kliknięcie prowincji z własną armią zaznacza całą (stojącą) armię; ponowne kliknięcie — odznacza.
+    const lead = prov >= 0 ? primaryArmyAt(prov) : null;
+    if (lead && !(wasSel && wasSel.id === lead.id)) { selectUnit({ type: 'army', id: lead.id, owner: lead.owner, prov: lead.prov }); return; }
     if (prov >= 0) openProvince(prov); else closeProvince();
   }
+  /** Główna armia gracza w prowincji: stojąca (największa), inaczej największa maszerująca. */
+  function primaryArmyAt(prov) {
+    const mine = armiesIn(prov).filter((a) => a.owner === me() && !a.embarked);
+    if (!mine.length) return null;
+    const standing = mine.filter((a) => !(a.path && a.path.length));
+    return (standing.length ? standing : mine).reduce((b, a) => (a.size > b.size ? a : b));
+  }
+  UI.primaryArmyAt = primaryArmyAt;
   function onRightClick(prov) {
     if (!S.inGame) return;
     if (S.sel && prov >= 0) openOrderBar(prov);
     else if (orderBarOpen()) closeOrderBar();
   }
   function onDragStart(u) { selectUnit(u); }
+  // Dotyk: stuknięcie. Gdy własna jednostka jest zaznaczona, stuknięcie innej prowincji (lub obcej armii) = wybór celu.
+  function onTap(prov, sx, sy, unit) {
+    if (!S.inGame) { onMapClick(prov); return; }
+    if (S.godTool) { applyGodTool(unit ? unit.prov : prov); return; }
+    const selU = unitObj(S.sel);
+    if (unit) {
+      if (unit.owner === me() || !selU || selU.owner !== me()) { onUnitClick(unit); return; }
+      prov = unit.prov;
+    }
+    if (selU && selU.owner === me() && prov >= 0 && prov !== selU.prov) { openOrderBar(prov); return; }
+    onMapClick(prov);
+  }
+  // Dotyk: przytrzymanie = tooltip z informacjami (zamiast hovera), nad palcem.
+  function onLongPress(prov, sx, sy, unit) {
+    S.lastHoverKey = '';
+    showTooltip(prov, sx, sy, unit);
+    const tt = $('tooltip');
+    if (tt.classList.contains('hidden')) return;
+    const w = tt.offsetWidth, h = tt.offsetHeight, top = $('topbar').getBoundingClientRect().bottom || 0;
+    const x = Math.max(8, Math.min(window.innerWidth - w - 8, sx - w / 2));
+    let y = sy - h - 30;
+    if (y < top + 6) y = Math.min(window.innerHeight - h - 8, sy + 34);
+    tt.style.left = x + 'px'; tt.style.top = y + 'px';
+  }
+  function onDragCancel() { R().view.preview = null; R().requestDraw(); }
   function onDragDrop(u, prov) {
     if (prov >= 0 && S.sel) openOrderBar(prov);
     else R().view.preview = null;
@@ -1238,7 +1546,60 @@
   function bindRenderHandlers() {
     Object.assign(R().handlers, {
       canDragUnit, unitClick: onUnitClick, click: onMapClick, rightClick: onRightClick,
-      dragStart: onDragStart, dragDrop: onDragDrop, hoverChange: onHoverChange, hover: showTooltip
+      dragStart: onDragStart, dragDrop: onDragDrop, hoverChange: onHoverChange, hover: showTooltip,
+      tap: onTap, longPress: onLongPress, dragCancel: onDragCancel
+    });
+  }
+
+  // ===========================================================================
+  // Przyciski zoomu na ekranie (+, −, wyśrodkuj na moim państwie)
+  // ===========================================================================
+  function bindZoomControls() {
+    $('zc-in').addEventListener('click', () => R().zoomAnimated(1.6));
+    $('zc-out').addEventListener('click', () => R().zoomAnimated(1 / 1.6));
+    $('zc-home').addEventListener('click', () => {
+      if (S.inGame && me()) R().centerOnCountry(me(), 0.8);
+      else centerStartView();
+    });
+  }
+
+  // ===========================================================================
+  // Telefon: panele jako bottom sheet — przeciągnięcie uchwytu w dół zamyka/zwija, w górę rozwija,
+  // stuknięcie w nagłówek przełącza zwinięty ↔ normalny.
+  // ===========================================================================
+  function bindSheets() {
+    ['province-panel', 'diplo-panel', 'god-panel'].forEach((id) => {
+      const el = $(id);
+      let st = null;
+      el.addEventListener('pointerdown', (e) => {
+        if (!isMobile() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        if (!e.target.closest('.panel-head') || e.target.closest('button, input, select, a, label')) return;
+        st = { id: e.pointerId, y0: e.clientY, dy: 0, t0: performance.now() };
+        try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignoruj */ }
+        el.classList.add('sheet-dragging');
+      });
+      el.addEventListener('pointermove', (e) => {
+        if (!st || e.pointerId !== st.id) return;
+        st.dy = e.clientY - st.y0;
+        el.style.transform = 'translateY(' + Math.max(-60, st.dy) + 'px)';
+      });
+      const end = (e) => {
+        if (!st || e.pointerId !== st.id) return;
+        const dy = st.dy, v = dy / Math.max(1, performance.now() - st.t0);
+        st = null;
+        el.classList.remove('sheet-dragging');
+        el.style.transform = '';
+        const collapsed = el.classList.contains('sheet-collapsed'), expanded = el.classList.contains('sheet-expanded');
+        if (Math.abs(dy) < 8) { el.classList.toggle('sheet-collapsed', !collapsed); el.classList.remove('sheet-expanded'); return; }
+        if (dy > 70 || v > 0.5) {
+          if (expanded) el.classList.remove('sheet-expanded');
+          else { const c = el.querySelector('[data-act=close]'); if (c) c.click(); el.classList.remove('sheet-collapsed'); }
+        } else if (dy < -40 || v < -0.5) {
+          if (collapsed) el.classList.remove('sheet-collapsed'); else el.classList.add('sheet-expanded');
+        }
+      };
+      el.addEventListener('pointerup', end);
+      el.addEventListener('pointercancel', end);
     });
   }
 
@@ -1308,11 +1669,15 @@
   // Inicjalizacja
   // ===========================================================================
   UI.init = function () {
+    decorateChrome();
+    bindRangeStyling();
     bindRenderHandlers();
     bindStart();
     bindTopbar();
     bindMapModes();
     bindLog();
+    bindZoomControls();
+    bindSheets();
     bindKeys();
     bindGameEvents();
   };

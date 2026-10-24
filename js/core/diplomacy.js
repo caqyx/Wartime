@@ -477,6 +477,117 @@ WT.diplomacy = (function () {
   }
 
   // =====================================================================
+  // Wsparcie innych państw: przelewy pieniędzy i przekazywanie wojska
+  // =====================================================================
+
+  var AID_MIN_SOLDIERS = 500;
+
+  /** Wspólne warunki wsparcia; zwraca powód odmowy albo null. */
+  function checkAid(from, to) {
+    var err = checkPair(from, to);
+    if (err) return err;
+    if (atWar(from, to)) return 'Nie można wspierać państwa, z którym jesteś w stanie wojny.';
+    return null;
+  }
+
+  /** Przelew mld USD ze skarbca (God Mode gracza: skarbiec się nie zmniejsza). Relacje rosną z kwotą względem PKB odbiorcy. */
+  function giveMoney(from, to, amount) {
+    var err = checkAid(from, to);
+    if (err) return { ok: false, reason: err };
+    amount = U.round(+amount || 0, 2);
+    if (!(amount > 0)) return { ok: false, reason: 'Podaj kwotę większą od zera.' };
+    if (!WT.economy.canAfford(from, amount)) return { ok: false, reason: 'Brak środków: w skarbcu ' + U.fmtMoney(Math.max(0, S.country(from).treasury)) + '.' };
+    WT.economy.pay(from, amount);
+    S.country(to).treasury = U.round(S.country(to).treasury + amount, 3);
+    var gdp = Math.max(1, WT.economy.countryGdp(to));
+    var delta = Math.round(U.clamp(amount / gdp * 400, 1, 20));
+    changeRel(from, to, delta);
+    S.addLog(name(from) + ' przekazuje ' + U.fmtMoney(amount) + ' wsparcia dla: ' + name(to) + '.', from);
+    return { ok: true, reason: 'Przekazano ' + U.fmtMoney(amount) + ' dla: ' + name(to) + ' (relacje +' + delta + ').', relDelta: delta };
+  }
+
+  /** Czy armia może oddać żołnierzy: stoi na lądzie i w jej prowincji nie ma wroga (nie walczy). */
+  function canDonateFrom(army) {
+    return !army.embarked && !WT.military.hostileArmies(army.owner, army.prov).length;
+  }
+
+  /** Armie, z których pobierane jest wojsko: z sourceProv (najpierw stojące) albo największe stojące armie kraju. */
+  function donorArmies(cc, sourceProv) {
+    var list = sourceProv != null && sourceProv >= 0
+      ? S.armiesIn(sourceProv).filter(function (a) { return a.owner === cc; })
+      : S.armiesOf(cc).filter(function (a) { return !a.path.length; });
+    return list.filter(canDonateFrom).sort(function (a, b) {
+      return (a.path.length ? 1 : 0) - (b.path.length ? 1 : 0) || b.size - a.size;
+    });
+  }
+
+  /** Liczba żołnierzy, których cc może przekazać (opcjonalnie z jednej prowincji). */
+  function availableTroops(cc, sourceProv) {
+    return donorArmies(cc, sourceProv).reduce(function (s, a) { return s + a.size; }, 0);
+  }
+
+  function aidTroopsReason(from, to) {
+    var err = checkAid(from, to);
+    if (err) return err;
+    var rel = relation(from, to);
+    if (rel < 0) return name(to) + ': relacje za słabe (' + rel + ', wymagane ≥ 0).';
+    var foe = enemiesOf(to).filter(function (e) { return e !== from && friendly(from, e); })[0];
+    if (foe) return name(to) + ' jest w wojnie z twoim sojusznikiem (' + name(foe) + ').';
+    return null;
+  }
+
+  /** Prowincja, w której pojawi się przekazane wojsko: źródłowa (jeśli przyjazna odbiorcy), stolica, największa kontrolowana. */
+  function aidDestination(to, sourceProv) {
+    if (sourceProv != null && sourceProv >= 0) {
+      var p = G().provinces[sourceProv];
+      var friendlyLand = p.owner === to || p.ctrl === to || friendly(to, p.ctrl);
+      if (friendlyLand && !atWar(to, p.ctrl) && WT.military.canEnter(to, sourceProv)) return sourceProv;
+    }
+    var c = S.country(to);
+    if (c.capital >= 0 && G().provinces[c.capital].ctrl === to) return c.capital;
+    var own = S.controlledBy(to);
+    if (!own.length) return -1;
+    return own.reduce(function (b, id) { return (S.provStatic(id).pop || 0) > (S.provStatic(b).pop || 0) ? id : b; }, own[0]);
+  }
+
+  /**
+   * Przekazanie żołnierzy innemu państwu. Wojsko pobierane z armii w sourceProv albo z największych stojących armii
+   * (bez zaokrętowanych i walczących). Odbiorca dostaje armię (scaloną z istniejącą) — tech odbiorcy.
+   */
+  function giveTroops(from, to, soldiers, sourceProv) {
+    var err = aidTroopsReason(from, to);
+    if (err) return { ok: false, reason: err };
+    var sources = donorArmies(from, sourceProv);
+    var avail = sources.reduce(function (s, a) { return s + a.size; }, 0);
+    var n = Math.min(Math.round(+soldiers || 0), avail);
+    if (n < AID_MIN_SOLDIERS) return { ok: false, reason: avail < AID_MIN_SOLDIERS ? 'Brak dostępnego wojska (armie zaokrętowane, w walce lub brak armii).' : 'Za mały oddział (min. ' + AID_MIN_SOLDIERS + ' żołnierzy).' };
+    var srcProv = sourceProv != null && sourceProv >= 0 ? sourceProv : sources[0].prov;
+    var dest = aidDestination(to, srcProv);
+    if (dest < 0) return { ok: false, reason: name(to) + ' nie kontroluje żadnej prowincji.' };
+    takeSoldiers(sources, n);
+    var army = S.createArmy(to, dest, n);
+    army.moved = 99;
+    WT.military.engageAt(dest, army);
+    if (G().armies[army.id]) WT.military.mergeIfIdle(army);
+    WT.military.invalidatePower();
+    var recipientSize = S.armiesOf(to).reduce(function (s, a) { return s + a.size; }, 0);
+    var delta = Math.round(U.clamp(n / 1000 * 0.4 + 40 * n / Math.max(1, recipientSize), 2, 25));
+    changeRel(from, to, delta);
+    var where = S.provStatic(dest).name;
+    S.addLog(name(from) + ' przekazuje ' + U.fmtK(n) + ' żołnierzy dla: ' + name(to) + ' (' + where + ').', from);
+    return { ok: true, reason: 'Przekazano ' + U.fmtK(n) + ' żołnierzy dla: ' + name(to) + ' — ' + where + ' (relacje +' + delta + ').', prov: dest, soldiers: n, relDelta: delta };
+  }
+
+  function takeSoldiers(sources, n) {
+    var MIN = WT.military.MIN_ARMY;
+    for (var i = 0; i < sources.length && n > 0; i++) {
+      var a = sources[i], take = Math.min(a.size, n);
+      if (a.size - take < MIN) { n -= a.size; S.removeArmy(a.id); continue; }
+      a.size -= take; n -= take;
+    }
+  }
+
+  // =====================================================================
   // Propozycje AI → gracz
   // =====================================================================
 
@@ -557,6 +668,7 @@ WT.diplomacy = (function () {
     proposeAlliance: proposeAlliance, evaluateAlliance: evaluateAlliance, formAlliance: formAlliance, breakAlliance: breakAlliance,
     proposePact: proposePact, makePact: makePact, breakPact: breakPact,
     improveRelations: improveRelations, improveRelationsCost: improveRelationsCost, insult: insult,
+    giveMoney: giveMoney, giveTroops: giveTroops, availableTroops: availableTroops, aidTroopsReason: aidTroopsReason, aidDestination: aidDestination,
     addProposal: addProposal, answerProposal: answerProposal,
     afterBorderChange: afterBorderChange, refreshCountries: refreshCountries, eliminate: eliminate,
     processTurn: processTurn

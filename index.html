@@ -2,9 +2,13 @@
 <html lang="pl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0a111b">
   <title>Wartime 2026</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
   <div id="app">
@@ -15,16 +19,17 @@
       <div class="tb-country" id="tb-country" title="Twoje państwo"><span class="swatch" id="tb-swatch"></span><span id="tb-name">—</span></div>
       <div class="tb-stat" title="Data"><span class="lbl">Data</span><span class="val" id="tb-date">—</span></div>
       <div class="tb-stat" title="Skarbiec (mld USD)"><span class="lbl">Skarbiec</span><span class="val num" id="tb-treasury">—</span></div>
-      <div class="tb-stat" title="Bilans na turę (mld USD)"><span class="lbl">Bilans/turę</span><span class="val num" id="tb-balance">—</span></div>
-      <div class="tb-stat" title="Rezerwy rekrutacyjne"><span class="lbl">Rezerwy</span><span class="val num" id="tb-manpower">—</span></div>
-      <div class="tb-stat" title="Stabilność"><span class="lbl">Stabilność</span><span class="val num" id="tb-stability">—</span></div>
-      <div class="tb-stat" title="Łączna liczebność armii"><span class="lbl">Armia</span><span class="val num" id="tb-army">—</span></div>
+      <div class="tb-stat tb-secondary" title="Bilans na turę (mld USD)"><span class="lbl">Bilans/turę</span><span class="val num" id="tb-balance">—</span></div>
+      <div class="tb-stat tb-secondary" title="Rezerwy rekrutacyjne"><span class="lbl">Rezerwy</span><span class="val num" id="tb-manpower">—</span></div>
+      <div class="tb-stat tb-secondary" title="Stabilność"><span class="lbl">Stabilność</span><span class="val num" id="tb-stability">—</span></div>
+      <div class="tb-stat tb-secondary" title="Łączna liczebność armii"><span class="lbl">Armia</span><span class="val num" id="tb-army">—</span></div>
       <div class="tb-spacer"></div>
       <span class="god-badge hidden" id="tb-god">GOD MODE</span>
-      <button class="btn" id="btn-diplomacy" title="Dyplomacja">Dyplomacja</button>
-      <button class="btn" id="btn-god" title="Narzędzia God Mode">God Mode</button>
-      <button class="btn" id="btn-menu" title="Menu">Menu</button>
-      <button class="btn btn-primary btn-endturn" id="btn-endturn" title="Koniec tury (Spacja)">Koniec tury <kbd>Spacja</kbd></button>
+      <button class="btn tb-secondary" id="btn-diplomacy" title="Dyplomacja">Dyplomacja</button>
+      <button class="btn tb-secondary" id="btn-god" title="Narzędzia God Mode">God Mode</button>
+      <button class="btn tb-secondary" id="btn-menu" title="Menu">Menu</button>
+      <button class="btn btn-primary btn-endturn" id="btn-endturn" title="Koniec tury (Spacja)" aria-label="Koniec tury">Koniec tury <kbd>Spacja</kbd></button>
+      <button class="btn tb-more" id="btn-more" title="Więcej" aria-label="Więcej" aria-expanded="false"><span class="tb-more-ico" aria-hidden="true">⋯</span></button>
     </header>
 
     <!-- Menu rozwijane -->
@@ -48,6 +53,13 @@
       <button class="mm-btn" data-mode="terrain" title="Teren (4)"><span class="mm-ico ico-ter"></span>Teren<kbd>4</kbd></button>
     </div>
     <div id="legend" class="legend hidden"></div>
+
+    <!-- Sterowanie zoomem (mysz i dotyk) -->
+    <div id="zoom-ctrl" class="zoom-ctrl zoom-controls" role="group" aria-label="Zoom mapy">
+      <button class="zc-btn zoom-btn" id="zc-in" title="Przybliż (+)" aria-label="Przybliż">+</button>
+      <button class="zc-btn zoom-btn" id="zc-out" title="Oddal (−)" aria-label="Oddal">−</button>
+      <button class="zc-btn zoom-btn" id="zc-home" title="Wyśrodkuj na moim państwie" aria-label="Wyśrodkuj na moim państwie"><span class="zc-home-ico" aria-hidden="true"></span></button>
+    </div>
 
     <!-- Pasek rozkazu -->
     <div id="order-bar" class="order-bar hidden"></div>

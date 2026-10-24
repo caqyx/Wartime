@@ -210,7 +210,8 @@ WT.economy = (function () {
     if (!isGodFor(cc)) S.country(cc).manpower -= sizeK;
     var army = S.createArmy(cc, provId, sizeK * 1000);
     army.moved = 99;
-    return army;
+    // rekruci dołączają do stojącej armii (która zachowuje swoje punkty ruchu)
+    return (WT.military && WT.military.merge(provId, cc)) || army;
   }
 
   function buildShipsCost(n) { return U.round(n * SHIP_COST, 2); }

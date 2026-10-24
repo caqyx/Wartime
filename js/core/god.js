@@ -36,7 +36,7 @@ WT.god = (function () {
     if (size < 1000) size *= 1000;
     var army = S.createArmy(cc, provId, size);
     WT.military.engageAt(provId, army);
-    return G().armies[army.id] || null;
+    return G().armies[army.id] ? WT.military.mergeIfIdle(army) : null;
   }
 
   function forcePeace(a, b) {

@@ -180,7 +180,11 @@ G = {
   zwraca null (UI wtedy próbuje `WT.naval.planInvasion`).
 - `order(armyId, destProv, sizeSoldiers?) → { ok, reason, armyId }` — jeśli `size < army.size`, armia jest dzielona
   (nowa armia dostaje rozkaz). Ustawia `army.path`.
-- `cancel(armyId)`, `merge(provId, cc)` — łączy wszystkie bezczynne armie danego kraju w prowincji.
+- `cancel(armyId)`, `merge(provId, cc)` — łączy wszystkie bezczynne armie danego kraju w prowincji (zostaje największa armia
+  z ruchem; świeżo zrekrutowane `moved=99` dołączają bez odbierania jej punktów ruchu).
+- **Auto-scalanie**: bezczynne armie (pusty `path`, nie `embarked`) tego samego państwa w jednej prowincji scalają się same —
+  po rekrutacji (`recruit` zwraca armię, do której dołączyli rekruci), po dotarciu do celu, desancie, odwrocie, wyrzuceniu po pokoju,
+  `spawnArmy`, wczytaniu gry i na koniec tury. `mergeIfIdle(army)`, `mergeAll()`. Armie w marszu i zaokrętowane się nie scalają.
 - `disband(armyId)`.
 - Ruch: **punkty ruchu = 2/tura**. Wejście do prowincji własnej/sojuszniczej kosztuje 1, do wrogiej 2 (kończy ruch).
   Teren mountains/jungle: +1 koszt. Ruch wykonywany w `WT.turn.end()` dla wszystkich jednocześnie, w kolejności
@@ -211,6 +215,15 @@ G = {
 - `proposeAlliance(a,b)`, `proposePact(a,b)`, `breakAlliance(a,b)`, `improveRelations(a,b)` (koszt 1 mld + 0.1% PKB, +8),
   `insult(a,b)` (-25). Każda zwraca `{accepted|ok, reason}` z polskim opisem.
 - `answerProposal(id, accept:boolean)`.
+- **Wsparcie**: `giveMoney(from, to, amount) → {ok, reason, relDelta}` — przelew mld USD (God Mode gracza: skarbiec nie maleje),
+  relacje +1..+20 proporcjonalnie do kwoty/PKB odbiorcy; odmowa w wojnie z odbiorcą.
+  `giveTroops(from, to, soldiers, sourceProv?) → {ok, reason, prov, soldiers, relDelta}` — żołnierze z armii w `sourceProv`
+  albo z największych stojących armii (bez zaokrętowanych i stojących z wrogiem); odbiorca dostaje armię (scaloną) w prowincji
+  źródłowej, jeśli należy/jest kontrolowana przez niego lub jego sojusznika i nie jest w rękach wroga, inaczej w stolicy
+  (okupowana → największa kontrolowana prowincja). Odmowa: wojna z odbiorcą, odbiorca w wojnie z twoim sojusznikiem/współwalczącym,
+  relacje < 0. `availableTroops(cc, sourceProv?)`, `aidTroopsReason(from, to) → reason|null`, `aidDestination(to, sourceProv)`.
+  AI z nadwyżką skarbca (> ~12 tygodni wydatków) co ~8 tur może (35%, cooldown 16 tur) wesprzeć pieniędzmi przyjaciela/sojusznika
+  przegrywającego (wynik ≤ −15) wojnę z rywalem darczyńcy — maks. 3% PKB odbiorcy.
 - Eliminacja państwa gdy nie ma żadnych prowincji (owner) → `alive=false`, wojny zamknięte.
 
 ### WT.ai

@@ -56,6 +56,7 @@ WT.turn = (function () {
   function advanceTime() {
     G().turn++;
     S.advanceDate(7);
+    WT.military.mergeAll();
     WT.military.resetMoves();
   }
 

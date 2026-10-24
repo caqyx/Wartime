@@ -9,21 +9,29 @@
   // Stałe
   // ---------------------------------------------------------------------------
   var TILE = 512;                 // rozmiar kafla w pikselach urządzenia
-  var MAX_TILES = 72;             // LRU (~1 MB na kafel)
+  var MAX_TILES = 72;             // LRU (~1 MB na kafel); na urządzeniach dotykowych mniej — patrz resize()
   var TILE_BUDGET_MS = 9;         // ile ms na klatkę wolno renderować kafle
   var WORLD_PX = 2048;            // szerokość obrazu całej mapy (fallback)
-  var MAX_ZOOM = 14;
+  var MAX_ZOOM = 24;              // Singapur/Bahrajn/Monako muszą dać się trafić palcem
+  var IS_TOUCH = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0);
+  var TOUCH_UNIT_TOL = 20;        // tolerancja trafienia markera armii/floty palcem (px CSS)
   var GRID_CELL = 64;             // komórka siatki przestrzennej (jednostki mapy)
+  // Paleta mapy zgodna z tokenami css/style.css (akcent = neonowy cyjan, semantyka: wojna/sojusz/sukces/ostrzeżenie)
   var COLORS = {
-    sea: '#0d2236', seaDeep: '#0a1b2c', grid: 'rgba(120,170,215,0.09)',
-    background: '#3d4247', backgroundEdge: 'rgba(0,0,0,0.35)',
-    border: 'rgba(6,8,12,0.88)', provBorder: 'rgba(0,0,0,0.30)',
-    hover: 'rgba(255,255,255,0.16)', select: '#ffe27a',
-    route: '#ffd166', routeSea: '#4fb3ff', routeBad: '#ff6b6b'
+    sea: '#0b1a2b', seaTop: '#0d2034', seaBottom: '#091523', seaDeep: '#060d17', grid: 'rgba(140,205,235,0.075)',
+    coastGlow: [96, 200, 230],       // poświata płytkiej wody przy brzegu (RGB)
+    background: '#283039', backgroundEdge: 'rgba(0,0,0,0.30)',
+    border: 'rgba(6,9,14,0.9)', provBorder: 'rgba(255,255,255,0.14)',
+    hover: 'rgba(255,255,255,0.12)', hoverEdge: 'rgba(225,250,255,0.75)',
+    select: '#5fe3f5', selectGlow: 'rgba(95,227,245,0.28)',
+    accent: '#5fe3f5', accentRgb: '95,227,245',
+    route: '#5fe3f5', routeSea: '#8fa8ff', routeBad: '#ff6b6b',
+    war: '#e5484d', ally: '#5b8def', pact: '#3fb8b0', self: '#5fe3f5', ok: '#3ec27f',
+    labelInk: 'rgba(250,252,255,0.94)', labelHalo: 'rgba(6,10,16,0.55)'
   };
   var TERRAIN_COLORS = {
-    plains: '#8fae5e', hills: '#b0a060', mountains: '#8c7b6b', desert: '#d8c27e',
-    forest: '#4f7f45', tundra: '#a9b8bd', jungle: '#2f7a4f'
+    plains: '#8fa865', hills: '#a99a63', mountains: '#867a70', desert: '#cdb882',
+    forest: '#4e7a4c', tundra: '#a3b2b8', jungle: '#33735a'
   };
 
   // ---------------------------------------------------------------------------
@@ -68,12 +76,33 @@
     var h = 0; for (var i = 0; i < cc.length; i++) h = (h * 31 + cc.charCodeAt(i)) >>> 0;
     return 'hsl(' + (h % 360) + ',38%,52%)';
   }
-  function countryColor(cc) {
+  function rawCountryColor(cc) {
     var g = G();
     if (g && g.countries[cc] && g.countries[cc].color) return g.countries[cc].color;
     var cd = window.COUNTRY_DATA && window.COUNTRY_DATA[cc];
     return (cd && cd.color) || hashColor(cc || '???');
   }
+  // Nowoczesna paleta: kolor państwa lekko zdesaturowany, jasność ściśnięta do wąskiego pasma
+  // (żadne państwo nie "krzyczy" ani nie ginie w ciemności). Cache per kolor źródłowy.
+  var modernCache = {};
+  function modernize(c) {
+    var hit = modernCache[c]; if (hit) return hit;
+    var x = parseColor(c), r = x[0] / 255, gg = x[1] / 255, b = x[2] / 255;
+    var max = Math.max(r, gg, b), min = Math.min(r, gg, b), l = (max + min) / 2, h = 0, s = 0, d = max - min;
+    if (d > 1e-6) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      h = max === r ? ((gg - b) / d) % 6 : max === gg ? (b - r) / d + 2 : (r - gg) / d + 4;
+      h *= 60; if (h < 0) h += 360;
+    }
+    s = Math.min(0.62, s * 0.82);
+    l = 0.40 + (Math.max(0.12, Math.min(0.88, l)) - 0.12) / 0.76 * 0.30;
+    var C = (1 - Math.abs(2 * l - 1)) * s, X = C * (1 - Math.abs((h / 60) % 2 - 1)), m = l - C / 2, rgb;
+    if (h < 60) rgb = [C, X, 0]; else if (h < 120) rgb = [X, C, 0]; else if (h < 180) rgb = [0, C, X];
+    else if (h < 240) rgb = [0, X, C]; else if (h < 300) rgb = [X, 0, C]; else rgb = [C, 0, X];
+    var hex = '#' + rgb.map(function (v) { var n = Math.round((v + m) * 255); return (n < 16 ? '0' : '') + n.toString(16); }).join('');
+    return (modernCache[c] = hex);
+  }
+  function countryColor(cc) { return modernize(rawCountryColor(cc)); }
   function countryName(cc) {
     var g = G();
     if (g && g.countries[cc] && g.countries[cc].name) return g.countries[cc].name;
@@ -120,14 +149,14 @@
     var g = G(), me = g ? g.player : view.highlightCC;
     var cc = ownerOf(id);
     if (!g || !me) return countryColor(cc);
-    if (cc === me) return '#e0c068';
+    if (cc === me) return '#d9b86a';
     var D = WT.diplomacy || {};
-    if (D.atWar && safeBool(D.atWar, me, cc)) return '#c0392b';
-    if (D.allied && safeBool(D.allied, me, cc)) return '#3b7dd8';
-    if (D.hasPact && safeBool(D.hasPact, me, cc)) return '#4aa3a0';
+    if (D.atWar && safeBool(D.atWar, me, cc)) return COLORS.war;
+    if (D.allied && safeBool(D.allied, me, cc)) return COLORS.ally;
+    if (D.hasPact && safeBool(D.hasPact, me, cc)) return COLORS.pact;
     var rel = D.relation ? callApi('diplomacy.relation', [me, cc], 0) : 0;
     var t = (rel + 100) / 200;
-    return t < 0.5 ? mix('#9b3b36', '#6c7076', t * 2) : mix('#6c7076', '#3f9a52', (t - 0.5) * 2);
+    return t < 0.5 ? mix('#94464a', '#5d6673', t * 2) : mix('#5d6673', '#3f9466', (t - 0.5) * 2);
   }
   function safeBool(fn, a, b) { try { return !!fn.call(WT.diplomacy, a, b); } catch (e) { return false; } }
 
@@ -138,7 +167,7 @@
   }
   function economyColor(id) {
     var t = econRank ? econRank[id] : 0;
-    return t < 0.5 ? mix('#2b2f45', '#7c6a2c', t * 2) : mix('#7c6a2c', '#f2d45c', (t - 0.5) * 2);
+    return t < 0.5 ? mix('#262a4a', '#2c7d78', t * 2) : mix('#2c7d78', '#d6e06c', (t - 0.5) * 2);
   }
   function provinceFill(id) {
     switch (mode) {
@@ -153,12 +182,13 @@
   function stripePattern(g2, color) {
     var p = patterns[color];
     if (!p) {
-      var c = document.createElement('canvas'); c.width = c.height = 10;
+      // ukośne pasy okupanta z cienką ciemną krawędzią — czytelne także na podobnym kolorze tła
+      var c = document.createElement('canvas'); c.width = c.height = 12;
       var x = c.getContext('2d');
-      x.strokeStyle = color; x.lineWidth = 3.2;
-      x.beginPath();
-      for (var k = -10; k <= 20; k += 10) { x.moveTo(k, 10); x.lineTo(k + 10, 0); }
-      x.stroke();
+      x.lineCap = 'butt'; x.beginPath();
+      for (var k = -12; k <= 24; k += 12) { x.moveTo(k, 12); x.lineTo(k + 12, 0); }
+      x.strokeStyle = 'rgba(8,12,18,0.45)'; x.lineWidth = 5.2; x.stroke();
+      x.strokeStyle = color; x.lineWidth = 3.4; x.stroke();
       p = patterns[color] = c;
     }
     return g2.createPattern(p, 'repeat');
@@ -230,7 +260,8 @@
   R.pickProvince = pickProvince;
 
   // Floty rysowane są nad armiami, więc mają pierwszeństwo przy wskazywaniu.
-  function pickUnitAt(sx, sy) {
+  // tol > 0 (dotyk): gdy nic nie trafiono dokładnie, wybierz najbliższy marker w promieniu tol px.
+  function pickUnitAt(sx, sy, tol) {
     for (var j = hitFleets.length - 1; j >= 0; j--) {
       var f = hitFleets[j];
       if (sx >= f.x && sx <= f.x + f.w && sy >= f.y && sy <= f.y + f.h) return { type: 'fleet', id: f.id, owner: f.owner, prov: f.prov };
@@ -239,7 +270,17 @@
       var h = hitArmies[i];
       if (sx >= h.x && sx <= h.x + h.w && sy >= h.y && sy <= h.y + h.h) return { type: 'army', id: h.id, owner: h.owner, prov: h.prov };
     }
-    return null;
+    if (!tol) return null;
+    var best = null, bestD = tol * tol;
+    function consider(b, type) {
+      var dx = sx < b.x ? b.x - sx : sx > b.x + b.w ? sx - b.x - b.w : 0;
+      var dy = sy < b.y ? b.y - sy : sy > b.y + b.h ? sy - b.y - b.h : 0;
+      var d = dx * dx + dy * dy;
+      if (d <= bestD) { bestD = d; best = { type: type, id: b.id, owner: b.owner, prov: b.prov }; }
+    }
+    for (var a = 0; a < hitArmies.length; a++) consider(hitArmies[a], 'army');
+    for (var k = 0; k < hitFleets.length; k++) consider(hitFleets[k], 'fleet');
+    return best;
   }
   R.pickUnitAt = pickUnitAt;
 
@@ -270,22 +311,28 @@
   R.zoomBy = function (factor) { zoomAt(viewW / 2, viewH / 2, factor); };
   R.panBy = function (dx, dy) { cam.x += dx / cam.zoom; cam.y += dy / cam.zoom; clampCamera(); };
   R.centerOn = function (mx, my, zoom) {
+    stopMotion();
     if (zoom) cam.zoom = zoom;
     cam.zoom = Math.max(minZoom(), Math.min(MAX_ZOOM, cam.zoom));
     cam.x = mx - viewW / 2 / cam.zoom; cam.y = my - viewH / 2 / cam.zoom;
     clampCamera();
   };
   R.centerOnProvince = function (id, zoom) { var p = MAP.provinces[id]; if (p) R.centerOn(p.cx, p.cy, zoom); };
-  // offsetX: szerokość (px) panelu zasłaniającego lewą część ekranu — środek przesuwa się w prawo
-  R.centerOnCountry = function (cc, minZ, offsetX) {
+  // offsetX: szerokość (px) panelu zasłaniającego lewą część ekranu — środek przesuwa się w prawo;
+  // offsetY: wysokość (px) panelu zasłaniającego dół ekranu (np. bottom sheet na telefonie) — środek idzie w górę.
+  R.centerOnCountry = function (cc, minZ, offsetX, offsetY) {
     var ids = [];
     MAP.provinces.forEach(function (p, i) { if (ownerOf(i) === cc) ids.push(i); });
     if (!ids.length) return;
     var b = [1e9, 1e9, -1e9, -1e9];
     ids.forEach(function (i) { var q = MAP.provinces[i].bbox; b[0] = Math.min(b[0], q[0]); b[1] = Math.min(b[1], q[1]); b[2] = Math.max(b[2], q[2]); b[3] = Math.max(b[3], q[3]); });
-    var z = Math.min(viewW / ((b[2] - b[0]) * 2.2 + 300), viewH / ((b[3] - b[1]) * 2.2 + 240));
+    var ox = offsetX || 0, oy = offsetY || 0;
+    var vw = Math.max(120, viewW - ox), vh = Math.max(120, viewH - oy);
+    var padX = Math.min(300, vw * 0.3), padY = Math.min(240, vh * 0.3);
+    var z = Math.min(vw / ((b[2] - b[0]) * 2.2 + padX), vh / ((b[3] - b[1]) * 2.2 + padY));
     z = Math.max(minZ || 0.5, Math.min(2.4, z));
-    R.centerOn((b[0] + b[2]) / 2 - (offsetX || 0) / 2 / Math.max(minZoom(), Math.min(MAX_ZOOM, z)), (b[1] + b[3]) / 2, z);
+    var zc = Math.max(minZoom(), Math.min(MAX_ZOOM, z));
+    R.centerOn((b[0] + b[2]) / 2 - ox / 2 / zc, (b[1] + b[3]) / 2 + oy / 2 / zc, z);
   };
   R.camera = function () { return { x: cam.x, y: cam.y, zoom: cam.zoom }; };
 
@@ -294,6 +341,12 @@
     viewW = canvas.clientWidth || window.innerWidth;
     viewH = canvas.clientHeight || window.innerHeight;
     canvas.width = Math.round(viewW * dpr); canvas.height = Math.round(viewH * dpr);
+    // Telefon/tablet: mniejszy cache kafli (pamięć), ale zawsze większy niż liczba kafli widocznych naraz
+    // (inaczej LRU wyrzucałby kafle potrzebne w tej samej klatce).
+    if (IS_TOUCH) {
+      var visible = (Math.ceil(canvas.width / TILE) + 1) * (Math.ceil(canvas.height / TILE) + 1);
+      MAX_TILES = Math.max(32, Math.ceil(visible * 1.5) + 8);
+    }
     clampCamera();
   }
 
@@ -381,17 +434,19 @@
   // ---------------------------------------------------------------------------
   function ensureScratch(w, h) {
     if (!scratch) scratch = { id: document.createElement('canvas'), border: document.createElement('canvas') };
-    if (scratch.id.width < w + 2 || scratch.id.height < h + 2) { scratch.id.width = w + 2; scratch.id.height = h + 2; }
+    if (scratch.id.width < w + 2 * EDGE_M || scratch.id.height < h + 2 * EDGE_M) { scratch.id.width = w + 2 * EDGE_M; scratch.id.height = h + 2 * EDGE_M; }
     if (scratch.border.width < w || scratch.border.height < h) { scratch.border.width = w; scratch.border.height = h; }
     return scratch;
   }
 
   // Rysuje ląd do kontekstu g: prostokąt mapy od (x0,y0), skala px/jednostkę, rozmiar w×h px.
   function renderRegion(g, x0, y0, scale, w, h) {
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.fillStyle = COLORS.sea; g.fillRect(0, 0, w, h);
     g.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
     var x1 = x0 + w / scale, y1 = y0 + h / scale;
+    // morze: pionowy gradient w układzie mapy (ciągły między kaflami)
+    var sea = g.createLinearGradient(0, 0, 0, MAP.height);
+    sea.addColorStop(0, COLORS.seaTop); sea.addColorStop(0.55, COLORS.sea); sea.addColorStop(1, COLORS.seaBottom);
+    g.fillStyle = sea; g.fillRect(x0, y0, x1 - x0, y1 - y0);
     drawGraticule(g, x0, y0, x1, y1, scale);
     drawBackgroundLand(g, scale);
     var ids = queryRect(x0, y0, x1, y1);
@@ -446,26 +501,31 @@
       g.fillStyle = pat; g.fill(provPaths[id]);
     }
   }
+  // granice prowincji: cienkie, jasne linie (nowoczesny styl) — pojawiają się płynnie wraz z zoomem
   function drawProvinceBorders(g, ids, scale) {
-    var alpha = Math.max(0, Math.min(0.42, (scale - 0.25) * 0.4));
-    if (alpha < 0.03) return;
-    g.strokeStyle = 'rgba(0,0,0,' + alpha.toFixed(3) + ')';
-    g.lineWidth = Math.min(1.2, 0.5 + scale * 0.1) / scale;
+    var alpha = Math.max(0, Math.min(0.2, (scale - 0.25) * 0.2));
+    if (alpha < 0.02) return;
+    g.strokeStyle = 'rgba(235,245,255,' + alpha.toFixed(3) + ')';
+    g.lineWidth = Math.min(1.1, 0.5 + scale * 0.08) / scale;
     for (var i = 0; i < ids.length; i++) g.stroke(provPaths[ids[i]]);
   }
 
   // Granice państw: raster ID państw + wykrywanie krawędzi (niezależne od topologii danych).
+  // Raster ID państw z marginesem EDGE_M px — cieniowanie przy granicy jest ciągłe między kaflami.
+  var EDGE_M = 8;
   function drawCountryBorders(g, ids, x0, y0, scale, w, h) {
-    var s = ensureScratch(w, h);
+    var s = ensureScratch(w, h), M = EDGE_M, W = w + 2 * M, H = h + 2 * M;
     var ic = s.id.getContext('2d', { willReadFrequently: true });
-    ic.setTransform(1, 0, 0, 1, 0, 0); ic.clearRect(0, 0, w + 2, h + 2);
-    ic.setTransform(scale, 0, 0, scale, -x0 * scale + 1, -y0 * scale + 1);
+    ids = queryRect(x0 - M / scale, y0 - M / scale, x0 + (w + M) / scale, y0 + (h + M) / scale);
+    ic.setTransform(1, 0, 0, 1, 0, 0); ic.clearRect(0, 0, W, H);
+    ic.setTransform(scale, 0, 0, scale, -x0 * scale + M, -y0 * scale + M);
     ic.lineWidth = 0.9 / scale;
+    if (bgPath) { ic.fillStyle = idColor(511); ic.fill(bgPath); }   // ląd poza grą = osobne "państwo" (brzeg, nie poświata morza)
     for (var i = 0; i < ids.length; i++) {
       var c = idColor(ccIndex[ownerOf(ids[i])] || 0);
       ic.fillStyle = c; ic.strokeStyle = c; ic.fill(provPaths[ids[i]]); ic.stroke(provPaths[ids[i]]);
     }
-    var src = new Uint32Array(ic.getImageData(0, 0, w + 2, h + 2).data.buffer);
+    var src = new Uint32Array(ic.getImageData(0, 0, W, H).data.buffer);
     var bc = s.border.getContext('2d');
     var out = bc.createImageData(w, h), dst = new Uint32Array(out.data.buffer);
     edgeDetect(src, dst, w, h, scale);
@@ -473,21 +533,61 @@
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.drawImage(s.border, 0, 0, w, h, 0, 0, w, h);
   }
-  function edgeDetect(src, dst, w, h, scale) {
-    var sw = w + 2, MASK = 0x00e0e0e0;
+  // Krawędzie państw + odległość od krawędzi (chamfer, 2 przebiegi) → wewnętrzne cieniowanie lądu przy granicy
+  // i jasna poświata płytkiej wody przy brzegu. Liczone raz na kafel (cache), nie co klatkę.
+  var edgeBuf = { n: 0, ids: null, dist: null, lut: null, lutKey: '' };
+  function edgeLut(R, scale) {
+    var key = R + ':' + Math.round(Math.min(235, 150 + scale * 40));
+    if (edgeBuf.lutKey === key) return edgeBuf.lut;
+    var lut = { land: new Uint32Array(R + 1), sea: new Uint32Array(R + 1), border: 0 };
     var a = Math.round(Math.min(235, 150 + scale * 40));
-    var col = ((a << 24) | (14 << 16) | (10 << 8) | 8) >>> 0;     // ABGR (little endian)
-    for (var y = 0; y < h; y++) {
-      var row = (y + 1) * sw + 1, o = y * w;
-      for (var x = 0; x < w; x++) {
-        var k = row + x, p = src[k];
-        var id = (p >>> 24) < 128 ? 0 : (p & MASK);
-        var r = src[k + 1], l = src[k - 1], u = src[k - sw], d = src[k + sw];
-        if (id !== ((r >>> 24) < 128 ? 0 : (r & MASK)) || id !== ((l >>> 24) < 128 ? 0 : (l & MASK)) ||
-            id !== ((u >>> 24) < 128 ? 0 : (u & MASK)) || id !== ((d >>> 24) < 128 ? 0 : (d & MASK))) dst[o + x] = col;
+    lut.border = ((a << 24) | (14 << 16) | (10 << 8) | 7) >>> 0;     // ABGR (little endian)
+    var cg = COLORS.coastGlow;
+    for (var d = 1; d <= R; d++) {
+      var t = 1 - (d - 0.5) / (R + 0.5), la = Math.round(255 * 0.22 * t * t), sa = Math.round(255 * 0.20 * t * t);
+      lut.land[d] = ((la << 24) | (18 << 16) | (10 << 8) | 6) >>> 0;
+      lut.sea[d] = ((sa << 24) | (cg[2] << 16) | (cg[1] << 8) | cg[0]) >>> 0;
+    }
+    edgeBuf.lut = lut; edgeBuf.lutKey = key;
+    return lut;
+  }
+  function edgeDetect(src, dst, w, h, scale) {
+    var M = EDGE_M, W = w + 2 * M, H = h + 2 * M, MASK = 0x00e0e0e0, n = W * H;
+    var R = Math.max(2, Math.min(M - 1, Math.round(1.5 + scale * 1.5)));
+    if (edgeBuf.n < n) { edgeBuf.n = n; edgeBuf.ids = new Uint32Array(n); edgeBuf.dist = new Uint8Array(n); }
+    var ids = edgeBuf.ids, dist = edgeBuf.dist, lut = edgeLut(R, scale), INF = 255;
+    var x, y, k, v, p, id, e;
+    // przebieg 1 (w dół): ID z wyprzedzeniem o wiersz, detekcja krawędzi (4-spójność) i chamfer w przód
+    for (k = 0; k < 2 * W; k++) { p = src[k]; ids[k] = (p >>> 24) < 128 ? 0 : (p & MASK); }
+    for (k = 0; k < W; k++) dist[k] = INF;
+    for (y = 1; y < H - 1; y++) {
+      var row = y * W, nxt = row + W, endRow = nxt + W;
+      for (k = nxt; k < endRow; k++) { p = src[k]; ids[k] = (p >>> 24) < 128 ? 0 : (p & MASK); }
+      dist[row] = INF; dist[nxt - 1] = INF;
+      for (k = row + 1; k < nxt - 1; k++) {
+        id = ids[k];
+        if (id !== ids[k + 1] || id !== ids[k - 1] || id !== ids[k - W] || id !== ids[k + W]) { dist[k] = 0; continue; }
+        v = dist[k - 1]; e = dist[k - W]; if (e < v) v = e;
+        dist[k] = v < INF ? v + 1 : INF;
+      }
+    }
+    for (k = (H - 1) * W; k < n; k++) dist[k] = INF;
+    // przebieg 2 (w górę): chamfer wstecz + zapis wyniku dla wnętrza kafla
+    for (y = H - 2; y >= 1; y--) {
+      var inner = y >= M && y < M + h, o = (y - M) * w + (W - 2 - M);
+      for (x = W - 2, k = y * W + x; x >= 1; x--, k--, o--) {
+        v = dist[k];
+        if (v) {
+          e = dist[k + 1] + 1; if (e < v) v = e;
+          e = dist[k + W] + 1; if (e < v) v = e;
+          dist[k] = v;
+        }
+        if (inner && v <= R && x >= M && x < M + w) dst[o] = v === 0 ? lut.border : ids[k] === 0 ? lut.sea[v] : lut.land[v];
       }
     }
   }
+
+
 
   // ---------------------------------------------------------------------------
   // Kafle
@@ -515,6 +615,9 @@
 
   function drawLand(now) {
     var s = cam.zoom * dpr, level = tileScaleFor(s);
+    // Podczas pinch-zoomu trzymaj poziom kafli (skalowanie gotowych kafli zamiast renderowania nowych w trakcie gestu).
+    if (gestureLevel && s / gestureLevel > 0.85 && s / gestureLevel < 2) level = gestureLevel;
+    else if (gestureActive) gestureLevel = level;
     var mx0 = cam.x, my0 = cam.y, mx1 = cam.x + viewW / cam.zoom, my1 = cam.y + viewH / cam.zoom;
     var tx0 = Math.floor(Math.max(-1, mx0) * level / TILE), tx1 = Math.floor(Math.min(MAP.width + 1, mx1) * level / TILE);
     var ty0 = Math.floor(Math.max(-1, my0) * level / TILE), ty1 = Math.floor(Math.min(MAP.height + 1, my1) * level / TILE);
@@ -554,24 +657,30 @@
     applyMapTransform();
     var lw = 1 / cam.zoom;
     if (view.highlightCC) drawCountryHighlight(view.highlightCC, lw);
-    if (view.hoverProv >= 0) {
+    if (view.hoverProv >= 0 && view.hoverProv !== view.selProv) {
       ctx.fillStyle = COLORS.hover; ctx.fill(provPaths[view.hoverProv]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.2 * lw; ctx.stroke(provPaths[view.hoverProv]);
+      ctx.strokeStyle = COLORS.hoverEdge; ctx.lineWidth = 1.1 * lw; ctx.stroke(provPaths[view.hoverProv]);
     }
     if (view.selProv >= 0) {
-      ctx.strokeStyle = COLORS.select; ctx.lineWidth = 2.4 * lw; ctx.setLineDash([6 * lw, 4 * lw]);
-      ctx.lineDashOffset = -dashPhase * lw; ctx.stroke(provPaths[view.selProv]); ctx.setLineDash([]);
+      // zaznaczenie: statyczna poświata akcentu (szeroki półprzezroczysty obrys + ostra linia), bez animacji
+      var sp = provPaths[view.selProv];
+      ctx.lineJoin = 'round';
+      ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.10)'; ctx.fill(sp);
+      ctx.strokeStyle = 'rgba(' + COLORS.accentRgb + ',0.16)'; ctx.lineWidth = 9 * lw; ctx.stroke(sp);
+      ctx.strokeStyle = COLORS.selectGlow; ctx.lineWidth = 4.5 * lw; ctx.stroke(sp);
+      ctx.strokeStyle = COLORS.select; ctx.lineWidth = 1.8 * lw; ctx.stroke(sp);
     }
     var target = view.pending ? view.pending.target : (view.preview ? view.preview.target : -1);
     if (target >= 0) {
-      ctx.fillStyle = view.pending || (view.preview && view.preview.ok) ? 'rgba(255,209,102,0.22)' : 'rgba(255,90,90,0.22)';
-      ctx.fill(provPaths[target]);
+      var ok = view.pending ? view.pending.ok !== false : (view.preview && view.preview.ok);
+      var rgb = ok ? (((view.pending || view.preview).kind === 'land') ? COLORS.accentRgb : '143,168,255') : '255,107,107';
+      ctx.fillStyle = 'rgba(' + rgb + ',0.20)'; ctx.fill(provPaths[target]);
+      ctx.strokeStyle = 'rgba(' + rgb + ',0.85)'; ctx.lineWidth = 1.4 * lw; ctx.stroke(provPaths[target]);
     }
   }
   function drawCountryHighlight(cc, lw) {
     var vis = visibleProvinces();
-    ctx.fillStyle = 'rgba(255,255,255,0.2)';
-    ctx.strokeStyle = 'rgba(255,240,190,0.9)'; ctx.lineWidth = 1.4 * lw;
+    ctx.fillStyle = 'rgba(255,255,255,0.16)';
     for (var i = 0; i < vis.length; i++) if (ownerOf(vis[i]) === cc) ctx.fill(provPaths[vis[i]]);
   }
   var visCache = { key: '', ids: [] };
@@ -582,10 +691,10 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Overlay: etykiety
+  // Overlay: etykiety (Inter / systemowy sans, szeroki tracking, miękka obwódka zamiast shadowBlur)
   // ---------------------------------------------------------------------------
-  var FONT_SANS = '"Segoe UI", "Helvetica Neue", Arial, sans-serif';
-  var FONT_MONO = 'ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace';
+  var FONT_SANS = '"Inter", "InterVariable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  var FONT_MONO = FONT_SANS;
 
   function drawCountryLabels() {
     if (cam.zoom > 3.4) return;
@@ -596,24 +705,27 @@
     var placed = [];
     for (var i = 0; i < countryLabels.length; i++) {
       var L = countryLabels[i];
-      var px = L.size * cam.zoom;
+      var px = L.size * cam.zoom * 0.9;
       var maxW = L.maxW * cam.zoom;
       if (px < 8.5) continue;
-      px = Math.min(px, 72);
+      px = Math.min(px, 60);
+      var track = px * 0.2;
       ctx.font = '700 ' + px.toFixed(1) + 'px ' + FONT_SANS;
-      setLetterSpacing(px * 0.12);
+      setLetterSpacing(track);
       var tw = ctx.measureText(L.text).width;
-      if (tw > maxW && maxW > 0) { px *= maxW / tw; if (px < 8.5) continue; ctx.font = '700 ' + px.toFixed(1) + 'px ' + FONT_SANS; setLetterSpacing(px * 0.12); tw = ctx.measureText(L.text).width; }
+      if (tw > maxW && maxW > 0) { px *= maxW / tw; if (px < 8.5) continue; track = px * 0.2; ctx.font = '700 ' + px.toFixed(1) + 'px ' + FONT_SANS; setLetterSpacing(track); tw = ctx.measureText(L.text).width; }
       var p = mapToScreen(L.x, L.y);
       if (p[0] < -tw || p[0] > viewW + tw || p[1] < -px || p[1] > viewH + px) continue;
       var box = [p[0] - tw / 2, p[1] - px / 2, p[0] + tw / 2, p[1] + px / 2];
       if (overlapsAny(box, placed)) continue;
       placed.push(box);
+      var x = p[0] + track / 2;            // letterSpacing dodaje odstęp także po ostatniej literze
+      ctx.globalAlpha = fade * 0.22;
+      ctx.lineWidth = Math.max(3, px * 0.28); ctx.strokeStyle = COLORS.labelHalo; ctx.strokeText(L.text, x, p[1]);
       ctx.globalAlpha = fade;
-      ctx.lineWidth = Math.max(2, px * 0.16); ctx.strokeStyle = 'rgba(8,12,18,0.6)';
-      ctx.strokeText(L.text, p[0], p[1]);
-      ctx.fillStyle = 'rgba(248,246,236,0.94)';
-      ctx.fillText(L.text, p[0], p[1]);
+      ctx.lineWidth = Math.max(1.6, px * 0.12); ctx.strokeText(L.text, x, p[1]);
+      ctx.fillStyle = COLORS.labelInk;
+      ctx.fillText(L.text, x, p[1]);
       ctx.globalAlpha = 1;
     }
     setLetterSpacing(0);
@@ -628,24 +740,27 @@
     if (cam.zoom < 1.6) return;
     applyScreenTransform();
     var vis = visibleProvinces();
-    var px = Math.min(13, 9 + cam.zoom * 0.6);
-    ctx.font = '600 ' + px.toFixed(1) + 'px ' + FONT_SANS;
+    var px = Math.min(12.5, 9 + cam.zoom * 0.5);
+    ctx.font = '500 ' + px.toFixed(1) + 'px ' + FONT_SANS;
+    setLetterSpacing(0.2);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-    ctx.globalAlpha = Math.min(1, (cam.zoom - 1.6) / 0.8);
+    var a = Math.min(1, (cam.zoom - 1.6) / 0.8);
     for (var i = 0; i < vis.length; i++) {
       var p = MAP.provinces[vis[i]];
       var wpx = (p.bbox[2] - p.bbox[0]) * cam.zoom;
       if (wpx < 70) continue;
       var s = mapToScreen(p.cx, p.cy);
-      var y = s[1] + 17;
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.strokeText(p.name, s[0], y);
-      ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.fillText(p.name, s[0], y);
+      var y = s[1] + 19;
+      ctx.globalAlpha = a;
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(6,10,16,0.5)'; ctx.strokeText(p.name, s[0], y);
+      ctx.fillStyle = 'rgba(255,255,255,0.86)'; ctx.fillText(p.name, s[0], y);
     }
     ctx.globalAlpha = 1;
+    setLetterSpacing(0);
   }
 
   // ---------------------------------------------------------------------------
-  // Overlay: trasy
+  // Overlay: trasy — wygładzona linia przerywana, animowany przesuw kresek (tylko overlay), grot, etykieta-pigułka
   // ---------------------------------------------------------------------------
   function drawRoutes() {
     var g = G(); if (!g) return;
@@ -655,18 +770,18 @@
       var a = g.armies[id];
       if (a.owner !== me || a.embarked || !a.path || !a.path.length) return;
       var sel = view.sel && view.sel.type === 'army' && view.sel.id === id;
-      drawPolyline(landPoints(a.prov, a.path), sel ? COLORS.route : 'rgba(255,209,102,0.55)', sel ? 2.4 : 1.6, null);
+      drawPolyline(landPoints(a.prov, a.path), sel ? COLORS.route : 'rgba(' + COLORS.accentRgb + ',0.55)', sel ? 2.4 : 1.6, null, sel);
     });
     Object.keys(g.fleets).forEach(function (id) {
       var f = g.fleets[id];
       if (f.owner !== me || !f.path || !f.path.length) return;
       var sel = view.sel && view.sel.type === 'fleet' && view.sel.id === id;
-      drawPolyline(seaPoints(f.prov, f.path), sel ? COLORS.routeSea : 'rgba(79,179,255,0.6)', sel ? 2.4 : 1.6, null);
+      drawPolyline(seaPoints(f.prov, f.path), sel ? COLORS.routeSea : 'rgba(143,168,255,0.6)', sel ? 2.4 : 1.6, null, sel);
     });
     var plan = view.pending || view.preview;
     if (plan && plan.points && plan.points.length > 1) {
       var color = !plan.ok ? COLORS.routeBad : (plan.kind === 'land' ? COLORS.route : COLORS.routeSea);
-      drawPolyline(plan.points, color, 3, plan.label || null, true);
+      drawPolyline(plan.points, color, 2.8, plan.label || null, true);
     }
   }
   function provPoint(id) { var p = MAP.provinces[id]; return [p.cx, p.cy]; }
@@ -678,48 +793,77 @@
   R.provPoint = provPoint;
   R.portPoint = portPoint;
 
+  // ścieżka przez punkty pośrednie wygładzona krzywymi kwadratowymi (punkty kontrolne = wierzchołki)
+  function smoothPath(sp, endTrim) {
+    var n = sp.length, last = sp[n - 1], prev = n > 2 ? mid(sp[n - 2], last) : sp[0];
+    var dx = last[0] - prev[0], dy = last[1] - prev[1], d = Math.hypot(dx, dy) || 1;
+    var end = [last[0] - dx / d * Math.min(endTrim, d * 0.6), last[1] - dy / d * Math.min(endTrim, d * 0.6)];
+    ctx.beginPath(); ctx.moveTo(sp[0][0], sp[0][1]);
+    if (n === 2) ctx.lineTo(end[0], end[1]);
+    else {
+      for (var i = 1; i < n - 1; i++) { var m = i < n - 2 ? mid(sp[i], sp[i + 1]) : prev; ctx.quadraticCurveTo(sp[i][0], sp[i][1], m[0], m[1]); }
+      ctx.lineTo(end[0], end[1]);
+    }
+    return prev;
+  }
+  function mid(a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; }
   function drawPolyline(pts, color, width, label, animated) {
     if (pts.length < 2) return;
     var sp = pts.map(function (p) { return mapToScreen(p[0], p[1]); });
+    var head = 7 + width * 2;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath(); ctx.moveTo(sp[0][0], sp[0][1]);
-    for (var i = 1; i < sp.length; i++) ctx.lineTo(sp[i][0], sp[i][1]);
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = width + 2.5; ctx.setLineDash([9, 6]);
-    ctx.lineDashOffset = animated ? -dashPhase : 0; ctx.stroke();
+    var from = smoothPath(sp, head * 0.6);
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(4,8,14,0.5)'; ctx.lineWidth = width + 3.5; ctx.stroke();       // ciemne podłoże (czytelność)
+    ctx.globalAlpha = 0.22; ctx.strokeStyle = color; ctx.lineWidth = width + 5; ctx.stroke(); // poświata
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([10, 7]); ctx.lineDashOffset = animated ? -dashPhase : 0;
     ctx.strokeStyle = color; ctx.lineWidth = width; ctx.stroke();
     ctx.setLineDash([]);
-    sp.slice(1, -1).forEach(function (p) { ctx.beginPath(); ctx.arc(p[0], p[1], width * 0.9, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); });
-    drawArrowHead(sp[sp.length - 2], sp[sp.length - 1], color, width);
+    for (var i = 1; i < sp.length - 1; i++) {
+      ctx.beginPath(); ctx.arc(sp[i][0], sp[i][1], width * 0.95 + 0.6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(4,8,14,0.65)'; ctx.fill();
+      ctx.beginPath(); ctx.arc(sp[i][0], sp[i][1], width * 0.95, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+    }
+    drawArrowHead(from, sp[sp.length - 1], color, head);
     if (label) drawRouteLabel(sp[sp.length - 1], label, color);
   }
-  function drawArrowHead(a, b, color, width) {
-    var ang = Math.atan2(b[1] - a[1], b[0] - a[0]), L = 8 + width * 2.2;
+  function drawArrowHead(a, b, color, L) {
+    var ang = Math.atan2(b[1] - a[1], b[0] - a[0]), c = Math.cos(ang), s = Math.sin(ang);
+    var bx = b[0] - c * L * 0.72, by = b[1] - s * L * 0.72;            // wcięcie z tyłu grota
     ctx.beginPath();
     ctx.moveTo(b[0], b[1]);
-    ctx.lineTo(b[0] - L * Math.cos(ang - 0.45), b[1] - L * Math.sin(ang - 0.45));
-    ctx.lineTo(b[0] - L * Math.cos(ang + 0.45), b[1] - L * Math.sin(ang + 0.45));
+    ctx.lineTo(b[0] - L * Math.cos(ang - 0.42), b[1] - L * Math.sin(ang - 0.42));
+    ctx.lineTo(bx, by);
+    ctx.lineTo(b[0] - L * Math.cos(ang + 0.42), b[1] - L * Math.sin(ang + 0.42));
     ctx.closePath();
-    ctx.fillStyle = color; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.2; ctx.fill(); ctx.stroke();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(4,8,14,0.6)'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.fillStyle = color; ctx.fill();
   }
   function drawRouteLabel(p, text, color) {
-    ctx.font = '700 12px ' + FONT_MONO;
-    var w = ctx.measureText(text).width + 12, x = p[0] + 10, y = p[1] - 26;
-    roundRect(x, y, w, 19, 4);
-    ctx.fillStyle = 'rgba(10,16,26,0.92)'; ctx.fill();
-    ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.stroke();
-    ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + 6, y + 10);
+    ctx.font = '600 12px ' + FONT_SANS;
+    var w = ctx.measureText(text).width + 18, h = 22, x = p[0] + 12, y = p[1] - 30;
+    roundRect(x, y + 2, w, h, h / 2); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();   // tani cień
+    roundRect(x, y, w, h, h / 2);
+    ctx.fillStyle = 'rgba(12,18,28,0.94)'; ctx.fill();
+    ctx.strokeStyle = color; ctx.globalAlpha = 0.7; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(x + 9, y + h / 2, 2.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+    ctx.fillStyle = '#eef6fb'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + 15, y + h / 2 + 0.5);
   }
   function roundRect(x, y, w, h, r) {
+    r = Math.min(r, h / 2, w / 2);
     ctx.beginPath();
-    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r); ctx.closePath();
   }
 
   // ---------------------------------------------------------------------------
-  // Overlay: armie i floty (styl AoH2)
+  // Overlay: armie (pigułki w kolorze państwa) i floty
   // ---------------------------------------------------------------------------
   function fmtK(n) {
     var k = n / 1000;
@@ -745,23 +889,43 @@
       if (!armyVisible(a, me)) continue;
       (byProv[a.prov] || (byProv[a.prov] = [])).push(a);
     }
+    for (var pid in byProv) if (byProv[pid].length > 1) byProv[pid] = stackByOwner(byProv[pid]);
     return byProv;
   }
+  // Jeden marker na państwo w prowincji: liczba = suma wojsk; marker (zaznaczenie/przeciąganie) wskazuje
+  // stojącą armię (gdy jest), inaczej największą maszerującą.
+  function stackByOwner(list) {
+    var by = {}, out = [];
+    list.forEach(function (a) {
+      var s = by[a.owner];
+      if (!s) { s = by[a.owner] = { id: a.id, owner: a.owner, prov: a.prov, size: 0, path: a.path, lead: a }; out.push(s); }
+      s.size += a.size;
+      var selId = view.sel && view.sel.type === 'army' ? view.sel.id : null;
+      if (s.lead.id === selId) return;                     // zaznaczona armia pozostaje "twarzą" markera
+      var standA = !(a.path && a.path.length), standL = !(s.lead.path && s.lead.path.length);
+      if (a.id === selId || (standA && !standL) || (standA === standL && a.size > s.lead.size)) { s.lead = a; s.id = a.id; s.path = a.path; }
+    });
+    return out;
+  }
+  R.stackByOwner = stackByOwner;
+  var CHIP_FONT = '700 11px ' + FONT_SANS;
   function drawArmies() {
     hitArmies = [];
     var g = G(); if (!g) return;
     applyScreenTransform();
     var byProv = groupArmies(), me = g.player;
-    ctx.font = '700 11px ' + FONT_MONO; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    ctx.font = CHIP_FONT; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+    setLetterSpacing(0.2);
     Object.keys(byProv).forEach(function (pid) {
       var list = byProv[pid].sort(function (a, b) { return a.owner === me ? -1 : b.owner === me ? 1 : a.owner < b.owner ? -1 : 1; });
       var c = mapToScreen(MAP.provinces[pid].cx, MAP.provinces[pid].cy);
       layoutBoxes(list, c[0], c[1]).forEach(function (b) { drawArmyBox(b, me); });
     });
+    setLetterSpacing(0);
   }
   function layoutBoxes(list, cx, cy) {
-    var H = 17, gap = 2, perRow = 3, boxes = [];
-    var widths = list.map(function (a) { return Math.max(34, ctx.measureText(fmtK(a.size)).width + 14); });
+    var H = 18, gap = 3, perRow = 3, boxes = [];
+    var widths = list.map(function (a) { return Math.max(36, Math.ceil(ctx.measureText(fmtK(a.size)).width) + 18); });
     var rows = Math.ceil(list.length / perRow);
     for (var r = 0; r < rows; r++) {
       var items = list.slice(r * perRow, r * perRow + perRow), ws = widths.slice(r * perRow, r * perRow + perRow);
@@ -771,27 +935,37 @@
     }
     return boxes;
   }
+  // Pigułka: cień (przesunięta ciemna kopia, bez shadowBlur), wypełnienie kolorem państwa, obrys, połysk u góry.
+  function drawPill(x, y, w, h, fill, stroke, strokeW) {
+    roundRect(x, y + 1.5, w, h, h / 2); ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fill();
+    roundRect(x, y, w, h, h / 2); ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = stroke; ctx.lineWidth = strokeW; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + h * 0.5, y + 2.2); ctx.lineTo(x + w - h * 0.5, y + 2.2);    // połysk u góry
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 1; ctx.stroke();
+  }
   function drawArmyBox(b, me) {
-    var a = b.army, color = countryColor(a.owner);
+    var a = b.army, color = countryColor(a.owner), mine = a.owner === me;
     var selected = view.sel && view.sel.type === 'army' && view.sel.id === a.id;
     var dragging = pointer.dragUnit && pointer.dragUnit.type === 'army' && pointer.dragUnit.id === a.id && pointer.moved;
-    if (selected) { roundRect(b.x - 3, b.y - 3, b.w + 6, b.h + 6, 4); ctx.fillStyle = COLORS.select; ctx.fill(); }
-    roundRect(b.x, b.y, b.w, b.h, 2);
-    ctx.fillStyle = color; ctx.globalAlpha = dragging ? 0.55 : 1; ctx.fill();
-    ctx.fillStyle = darken(color, 0.35); ctx.fillRect(b.x, b.y, 4, b.h);
-    ctx.lineWidth = 1; ctx.strokeStyle = a.owner === me ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.8)'; ctx.stroke();
-    var light = luminance(color) > 0.62;
-    ctx.fillStyle = light ? '#111' : '#fff';
-    if (!light) { ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 2; }
-    ctx.fillText(fmtK(a.size), b.x + 2 + b.w / 2, b.y + b.h / 2 + 0.5);
-    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
-    if (a.owner === me && a.path && a.path.length) drawMovingMark(b);
+    if (selected) {   // poświata akcentu wokół zaznaczonej armii
+      roundRect(b.x - 5, b.y - 5, b.w + 10, b.h + 10, (b.h + 10) / 2); ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.18)'; ctx.fill();
+      roundRect(b.x - 2.5, b.y - 2.5, b.w + 5, b.h + 5, (b.h + 5) / 2); ctx.fillStyle = COLORS.select; ctx.fill();
+    }
+    ctx.globalAlpha = dragging ? 0.55 : 1;
+    drawPill(b.x, b.y, b.w, b.h, color, mine ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.45)', mine ? 1.3 : 1);
+    var light = luminance(color) > 0.6;
+    ctx.fillStyle = light ? '#0b1118' : '#ffffff';
+    ctx.fillText(fmtK(a.size), b.x + b.w / 2, b.y + b.h / 2 + 0.5);
+    ctx.globalAlpha = 1;
+    if (mine && a.path && a.path.length) drawMovingMark(b);
     hitArmies.push({ x: b.x, y: b.y, w: b.w, h: b.h, id: a.id, owner: a.owner, prov: a.prov });
   }
-  function drawMovingMark(b) {
-    ctx.beginPath();
-    ctx.moveTo(b.x + b.w + 1, b.y + 3); ctx.lineTo(b.x + b.w + 6, b.y + b.h / 2); ctx.lineTo(b.x + b.w + 1, b.y + b.h - 3);
-    ctx.closePath(); ctx.fillStyle = COLORS.route; ctx.fill();
+  function drawMovingMark(b) {   // mały szewron "w ruchu" w kolorze akcentu
+    var x = b.x + b.w + 3, cy = b.y + b.h / 2;
+    ctx.beginPath(); ctx.moveTo(x, cy - 4); ctx.lineTo(x + 4.5, cy); ctx.lineTo(x, cy + 4);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(4,8,14,0.7)'; ctx.lineWidth = 3.6; ctx.stroke();
+    ctx.strokeStyle = COLORS.route; ctx.lineWidth = 2; ctx.stroke();
   }
 
   function drawFleets() {
@@ -805,59 +979,92 @@
       if (f.owner !== me && cam.zoom < 0.7) continue;
       (byPort[f.prov] || (byPort[f.prov] = [])).push(f);
     }
-    ctx.font = '700 11px ' + FONT_MONO; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    ctx.font = CHIP_FONT; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     Object.keys(byPort).forEach(function (pid) {
       var pt = portPoint(+pid), s = mapToScreen(pt[0], pt[1]);
       if (s[0] < -60 || s[0] > viewW + 60 || s[1] < -30 || s[1] > viewH + 30) return;
-      byPort[pid].forEach(function (f, i) { drawFleetIcon(f, s[0] - 4, s[1] + 4 + i * 20, me); });
+      byPort[pid].forEach(function (f, i) { drawFleetIcon(f, s[0] - 4, s[1] + 4 + i * 22, me); });
     });
   }
   function drawFleetIcon(f, x, y, me) {
-    var color = countryColor(f.owner);
+    var color = countryColor(f.owner), mine = f.owner === me;
     var cargo = (f.cargo || []).length;
-    var label = String(f.ships) + (cargo ? ' ⚓' + cargo : '');
-    var w = 26 + ctx.measureText(label).width, h = 18;
+    var label = String(f.ships);
+    var tw = ctx.measureText(label).width, cw = cargo ? ctx.measureText(String(cargo)).width + 12 : 0;
+    var h = 19, w = Math.ceil(30 + tw + (cargo ? cw + 4 : 0));
     var selected = view.sel && view.sel.type === 'fleet' && view.sel.id === f.id;
-    if (selected) { roundRect(x - 3, y - 3, w + 6, h + 6, 5); ctx.fillStyle = COLORS.select; ctx.fill(); }
-    roundRect(x, y, w, h, 9);
-    ctx.fillStyle = 'rgba(9,24,42,0.92)'; ctx.fill();
-    ctx.strokeStyle = f.owner === me ? '#9fd3ff' : darken(color, 0.1); ctx.lineWidth = 1.4; ctx.stroke();
-    drawShipGlyph(x + 4, y + 4, color);
-    ctx.fillStyle = '#e6f2ff'; ctx.fillText(label, x + 22, y + h / 2 + 0.5);
+    if (selected) {
+      roundRect(x - 5, y - 5, w + 10, h + 10, (h + 10) / 2); ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.18)'; ctx.fill();
+      roundRect(x - 2.5, y - 2.5, w + 5, h + 5, (h + 5) / 2); ctx.fillStyle = COLORS.select; ctx.fill();
+    }
+    drawPill(x, y, w, h, 'rgba(10,20,34,0.94)', mine ? 'rgba(' + COLORS.accentRgb + ',0.9)' : color, 1.3);
+    // kropka-plakietka w kolorze państwa z ikoną okrętu
+    ctx.beginPath(); ctx.arc(x + h / 2, y + h / 2, h / 2 - 2.5, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill();
+    drawShipGlyph(x + h / 2, y + h / 2, luminance(color) > 0.6 ? '#0b1118' : '#ffffff');
+    ctx.fillStyle = '#eef6fb'; ctx.fillText(label, x + h + 4, y + h / 2 + 0.5);
+    if (cargo) {   // ładunek: mała pigułka akcentu z liczbą armii na pokładzie
+      var cx = x + h + 4 + tw + 5;
+      roundRect(cx, y + 3, cw, h - 6, (h - 6) / 2); ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.22)'; ctx.fill();
+      ctx.fillStyle = COLORS.accent; ctx.fillText(String(cargo), cx + 6, y + h / 2 + 0.5);
+    }
     hitFleets.push({ x: x, y: y, w: w, h: h, id: f.id, owner: f.owner, prov: f.prov });
   }
-  function drawShipGlyph(x, y, color) {
+  function drawShipGlyph(cx, cy, color) {   // stylizowany okręt (kadłub + nadbudówka), wyśrodkowany w (cx, cy)
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(x, y + 6); ctx.lineTo(x + 16, y + 6); ctx.lineTo(x + 13, y + 10); ctx.lineTo(x + 3, y + 10); ctx.closePath();
-    ctx.fillStyle = color; ctx.fill();
-    ctx.fillRect(x + 6, y + 2, 5, 4);
-    ctx.fillRect(x + 8, y, 1.5, 2);
+    ctx.moveTo(cx - 5.5, cy + 0.5); ctx.lineTo(cx + 5.5, cy + 0.5); ctx.lineTo(cx + 3.5, cy + 3.5); ctx.lineTo(cx - 3.5, cy + 3.5); ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(cx - 2.5, cy - 2.5, 4.5, 2.6);
+    ctx.fillRect(cx - 0.9, cy - 4.5, 1.4, 2.2);
   }
 
   // Duch przeciąganej jednostki przy kursorze
   function drawDragGhost() {
     if (!pointer.dragUnit || !pointer.moved) return;
     applyScreenTransform();
-    ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 6, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,226,122,0.9)'; ctx.fill();
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.18)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS.accent; ctx.fill();
+    ctx.strokeStyle = 'rgba(4,8,14,0.8)'; ctx.lineWidth = 1.5; ctx.stroke();
   }
+
 
   // ---------------------------------------------------------------------------
   // Pętla klatek
   // ---------------------------------------------------------------------------
-  function hasAnimation() { return !!(view.preview || view.pending || view.selProv >= 0 || view.sel); }
+  // animowany przesuw kresek tylko dla planowanej trasy i trasy zaznaczonej jednostki (zaznaczenie prowincji jest statyczne)
+  function hasAnimation() { return !!(view.preview || view.pending || selHasRoute()); }
+  function selHasRoute() {
+    var g = G(), s = view.sel; if (!g || !s) return false;
+    var u = s.type === 'army' ? g.armies[s.id] : (g.fleets || {})[s.id];
+    return !!(u && u.path && u.path.length);
+  }
   function frame(now) {
     requestAnimationFrame(frame);
     var dt = Math.min(0.05, (now - (lastFrame || now)) / 1000); lastFrame = now;
     if (applyKeyPan(dt)) needsDraw = true;
+    if (applyMotion(now, dt)) needsDraw = true;
     if (hasAnimation()) { dashPhase = (dashPhase + dt * 22) % 1000; needsDraw = true; }
     if (!needsDraw && !pendingTiles) return;
     needsDraw = false;
     drawFrame(now);
     fpsTick(now);
   }
+  // Podczas ruchu kamery szklane panele przechodzą na tańsze, prawie kryjące tło (bez backdrop-filter):
+  // rozmycie tła, które zmienia się co klatkę, to najdroższy element kompozycji (zwłaszcza na telefonach).
+  var camTrack = { x: NaN, y: NaN, z: NaN, on: false, timer: 0 };
+  function trackCameraMotion() {
+    if (cam.x === camTrack.x && cam.y === camTrack.y && cam.zoom === camTrack.z) return;
+    var first = camTrack.x !== camTrack.x;
+    camTrack.x = cam.x; camTrack.y = cam.y; camTrack.z = cam.zoom;
+    if (first || !document.body) return;
+    if (!camTrack.on) { camTrack.on = true; document.body.classList.add('map-moving'); }
+    clearTimeout(camTrack.timer);
+    camTrack.timer = setTimeout(function () { camTrack.on = false; document.body.classList.remove('map-moving'); }, 180);
+  }
   function drawFrame(now) {
+    trackCameraMotion();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = COLORS.seaDeep; ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawLand(now);
@@ -891,15 +1098,69 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Wejście: mysz
+  // Ruch kamery: inercja po przeciągnięciu palcem, animowany zoom (double-tap, przyciski),
+  // przewijanie mapy przy krawędzi podczas przeciągania jednostki palcem.
+  // ---------------------------------------------------------------------------
+  var inertia = null;              // { vx, vy } — px CSS / s
+  var zoomAnim = null;             // { sx, sy, mx, my, from, to, t0, dur }
+  var gestureActive = false, gestureLevel = 0;   // blokada poziomu kafli w trakcie pinch
+  function stopMotion() { inertia = null; zoomAnim = null; }
+  function applyMotion(now, dt) {
+    var moved = false;
+    if (zoomAnim) {
+      var t = Math.max(0, Math.min(1, (performance.now() - zoomAnim.t0) / zoomAnim.dur));
+      var e = 1 - Math.pow(1 - t, 3);
+      cam.zoom = Math.max(minZoom(), Math.min(MAX_ZOOM, zoomAnim.from * Math.pow(zoomAnim.to / zoomAnim.from, e)));
+      cam.x = zoomAnim.mx - zoomAnim.sx / cam.zoom; cam.y = zoomAnim.my - zoomAnim.sy / cam.zoom;
+      clampCamera();
+      if (t >= 1) zoomAnim = null;
+      moved = true;
+    }
+    if (inertia) {
+      cam.x -= inertia.vx * dt / cam.zoom; cam.y -= inertia.vy * dt / cam.zoom; clampCamera();
+      var k = Math.exp(-dt / 0.32); inertia.vx *= k; inertia.vy *= k;
+      if (Math.abs(inertia.vx) + Math.abs(inertia.vy) < 20) inertia = null;
+      moved = true;
+    }
+    if (pointer.dragUnit && pointer.moved && touches.size === 1) {
+      var EZ = 40, ex = 0, ey = 0;
+      if (pointer.x < EZ) ex = -(EZ - pointer.x) / EZ; else if (pointer.x > viewW - EZ) ex = (pointer.x - viewW + EZ) / EZ;
+      if (pointer.y < EZ) ey = -(EZ - pointer.y) / EZ; else if (pointer.y > viewH - EZ) ey = (pointer.y - viewH + EZ) / EZ;
+      if (ex || ey) {
+        cam.x += ex * 650 * dt / cam.zoom; cam.y += ey * 650 * dt / cam.zoom; clampCamera();
+        updateHover(pointer.x, pointer.y);
+        moved = true;
+      }
+    }
+    return moved;
+  }
+  function animateZoomAt(sx, sy, factor) {
+    var target = Math.max(minZoom(), Math.min(MAX_ZOOM, (zoomAnim ? zoomAnim.to : cam.zoom) * factor));
+    var m = screenToMap(sx, sy);
+    inertia = null;
+    zoomAnim = { sx: sx, sy: sy, mx: m[0], my: m[1], from: cam.zoom, to: target, t0: performance.now(), dur: 240 };
+    needsDraw = true;
+  }
+  // Płynny zoom (przyciski na ekranie, double-tap); punkt stały domyślnie w środku ekranu.
+  R.zoomAnimated = function (factor, sx, sy) { animateZoomAt(sx == null ? viewW / 2 : sx, sy == null ? viewH / 2 : sy, factor); };
+  R.isTouch = function () { return IS_TOUCH; };
+
+  // ---------------------------------------------------------------------------
+  // Wejście: mysz / pióro (pointerType 'mouse' | 'pen')
   // ---------------------------------------------------------------------------
   function localXY(e) { var r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
   function call(name) { var h = R.handlers[name]; if (h) return h.apply(null, Array.prototype.slice.call(arguments, 1)); }
-
-  function onPointerDown(e) {
-    var p = localXY(e);
+  function blurActive() {
     var ae = document.activeElement;
     if (ae && ae !== document.body && ae.blur) ae.blur();   // skróty klawiszowe działają po kliknięciu w mapę
+  }
+  function setHover(id) { if (id !== view.hoverProv) { view.hoverProv = id; call('hoverChange', id); } }
+
+  function onPointerDown(e) {
+    if (e.pointerType === 'touch') { touchDown(e); return; }
+    var p = localXY(e);
+    blurActive();
+    stopMotion();
     pointer.down = true; pointer.button = e.button; pointer.sx = pointer.lx = p[0]; pointer.sy = pointer.ly = p[1];
     pointer.moved = false; pointer.dragUnit = null;
     if (e.button === 0) {
@@ -909,6 +1170,7 @@
     canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
   }
   function onPointerMove(e) {
+    if (e.pointerType === 'touch') { touchMove(e); return; }
     var p = localXY(e);
     pointer.x = p[0]; pointer.y = p[1];
     if (pointer.down) {
@@ -923,6 +1185,7 @@
     needsDraw = true;
   }
   function onPointerUp(e) {
+    if (e.pointerType === 'touch') { touchUp(e, false); return; }
     if (!pointer.down) return;
     var p = localXY(e), wasDrag = pointer.moved, unit = pointer.dragUnit, button = pointer.button;
     pointer.down = false; pointer.dragUnit = null; pointer.moved = false;
@@ -936,30 +1199,219 @@
     else call('click', prov, e);
     needsDraw = true;
   }
+  function onPointerCancel(e) {
+    if (e.pointerType === 'touch') { touchUp(e, true); return; }
+    pointer.down = false; pointer.dragUnit = null;
+  }
   function updateHover(sx, sy) {
     var m = screenToMap(sx, sy), id = pickProvince(m[0], m[1]);
     var unit = pointer.down ? null : pickUnitAt(sx, sy);
-    if (id !== view.hoverProv) { view.hoverProv = id; call('hoverChange', id); }
+    setHover(id);
     call('hover', id, sx, sy, unit);
   }
   function onWheel(e) {
     e.preventDefault();
+    stopMotion();
     var p = localXY(e);
-    var delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
-    zoomAt(p[0], p[1], Math.exp(-delta * 0.0015));
+    var delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+    // Pinch na touchpadzie (Chrome/Edge/Firefox) przychodzi jako wheel z ctrlKey i drobnymi deltami → czulszy, płynny zoom.
+    var factor = e.ctrlKey ? Math.exp(-Math.max(-60, Math.min(60, delta)) * 0.01) : Math.exp(-delta * 0.0015);
+    zoomAt(p[0], p[1], factor);
     updateHover(p[0], p[1]);
   }
-  function onLeave() { if (view.hoverProv !== -1) { view.hoverProv = -1; call('hoverChange', -1); } call('hover', -1, 0, 0, null); needsDraw = true; }
+  function onLeave(e) {
+    if (e && e.pointerType === 'touch') return;   // palec "opuszcza" canvas przy każdym puszczeniu — nie chowaj tooltipa z long-press
+    setHover(-1); call('hover', -1, 0, 0, null); needsDraw = true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wejście: dotyk (Pointer Events, pointerType 'touch')
+  //  1 palec: przeciąganie mapy z inercją; tap = klik; double-tap = zoom ×2; long-press = informacje o prowincji;
+  //           przeciągnięcie zaczęte na własnej jednostce = rozkaz ruchu (jak myszą).
+  //  2 palce: pinch-zoom wokół środka gestu + jednoczesne przesuwanie.
+  // ---------------------------------------------------------------------------
+  var TAP_SLOP = 9, LONG_PRESS_MS = 500, DOUBLE_TAP_MS = 320, DOUBLE_TAP_DIST = 32;
+  var touches = new Map();         // pointerId -> { x, y }
+  var touch = { multi: false, pinch: null, longTimer: 0, longFired: false, infoShown: false, samples: [], lastTap: null };
+
+  function touchDown(e) {
+    var p = localXY(e);
+    blurActive();
+    if (e.isPrimary && touches.size) touches.clear();   // nowa sekwencja dotyku — usuń "zgubione" palce (utracone pointerup)
+    touches.set(e.pointerId, { x: p[0], y: p[1] });
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignoruj */ }
+    if (touches.size === 1) {
+      stopMotion();
+      hideTouchInfo();
+      pointer.down = true; pointer.button = 0;
+      pointer.sx = pointer.lx = pointer.x = p[0]; pointer.sy = pointer.ly = pointer.y = p[1];
+      pointer.moved = false; pointer.dragUnit = null;
+      touch.multi = false; touch.longFired = false; touch.pinch = null;
+      touch.samples = [[performance.now(), p[0], p[1]]];
+      var u = pickUnitAt(p[0], p[1], TOUCH_UNIT_TOL);
+      if (u && call('canDragUnit', u)) pointer.dragUnit = u;
+      clearTimeout(touch.longTimer);
+      touch.longTimer = setTimeout(onLongPress, LONG_PRESS_MS);
+    } else {
+      // Kolejny palec: to już nie tap ani przeciąganie jednostki — zaczyna się pinch.
+      clearTimeout(touch.longTimer);
+      hideTouchInfo();
+      cancelUnitDrag();
+      touch.multi = true; pointer.moved = true; inertia = null;
+      startPinch();
+    }
+    needsDraw = true;
+  }
+  function cancelUnitDrag() {
+    var u = pointer.dragUnit;
+    pointer.dragUnit = null;
+    if (u && pointer.moved) { view.preview = null; setHover(-1); call('dragCancel', u); }
+  }
+  function pinchPair() { var it = touches.values(); return [it.next().value, it.next().value]; }
+  function startPinch() {
+    var ab = pinchPair();
+    touch.pinch = { cx: (ab[0].x + ab[1].x) / 2, cy: (ab[0].y + ab[1].y) / 2, d: Math.max(1, Math.hypot(ab[0].x - ab[1].x, ab[0].y - ab[1].y)) };
+    if (!gestureActive) { gestureActive = true; gestureLevel = tileScaleFor(cam.zoom * dpr); }
+  }
+  // Przyrostowo: punkt mapy pod poprzednim środkiem gestu trafia pod nowy środek, zoom × (nowy rozstaw / poprzedni).
+  // Dzięki temu dołożenie/zdjęcie palca (nowa para punktów) nie powoduje skoku, a limit zoomu nie tworzy "martwej strefy".
+  function updatePinch() {
+    var pz = touch.pinch; if (!pz) { startPinch(); return; }
+    var ab = pinchPair();
+    var cx = (ab[0].x + ab[1].x) / 2, cy = (ab[0].y + ab[1].y) / 2, d = Math.max(1, Math.hypot(ab[0].x - ab[1].x, ab[0].y - ab[1].y));
+    var anchor = screenToMap(pz.cx, pz.cy);
+    cam.zoom = Math.max(minZoom(), Math.min(MAX_ZOOM, cam.zoom * d / pz.d));
+    cam.x = anchor[0] - cx / cam.zoom; cam.y = anchor[1] - cy / cam.zoom;
+    clampCamera();
+    pz.cx = cx; pz.cy = cy; pz.d = d;
+    needsDraw = true;
+  }
+  function endGesture() { if (gestureActive) { gestureActive = false; gestureLevel = 0; needsDraw = true; } }
+
+  function touchMove(e) {
+    var t = touches.get(e.pointerId); if (!t) return;
+    var p = localXY(e); t.x = p[0]; t.y = p[1];
+    if (touches.size >= 2) { updatePinch(); return; }
+    if (!pointer.down) return;
+    pointer.x = p[0]; pointer.y = p[1];
+    if (!pointer.moved && Math.hypot(p[0] - pointer.sx, p[1] - pointer.sy) > TAP_SLOP) {
+      pointer.moved = true;
+      clearTimeout(touch.longTimer);
+      hideTouchInfo();
+      if (pointer.dragUnit) call('dragStart', pointer.dragUnit);
+    }
+    if (pointer.moved) {
+      if (pointer.dragUnit) updateHover(p[0], p[1]);           // podgląd trasy pod palcem
+      else {
+        cam.x -= (p[0] - pointer.lx) / cam.zoom; cam.y -= (p[1] - pointer.ly) / cam.zoom; clampCamera();
+        var now = performance.now();
+        touch.samples.push([now, p[0], p[1]]);
+        while (touch.samples.length > 2 && now - touch.samples[0][0] > 100) touch.samples.shift();
+      }
+    }
+    pointer.lx = p[0]; pointer.ly = p[1];
+    needsDraw = true;
+  }
+  function touchUp(e, cancelled) {
+    if (!touches.has(e.pointerId)) return;
+    touches.delete(e.pointerId);
+    if (touches.size >= 2) { touch.pinch = null; startPinch(); return; }
+    if (touches.size === 1) {
+      // Z pinch na jeden palec: dalej przesuwaj pozostałym palcem — bez skoku i bez tapu.
+      touch.pinch = null; endGesture();
+      var rest = touches.values().next().value;
+      pointer.lx = pointer.x = rest.x; pointer.ly = pointer.y = rest.y; pointer.moved = true; pointer.dragUnit = null;
+      touch.samples = [[performance.now(), rest.x, rest.y]];
+      return;
+    }
+    clearTimeout(touch.longTimer);
+    touch.pinch = null; endGesture();
+    var p = localXY(e), wasMoved = pointer.moved, unit = pointer.dragUnit;
+    pointer.down = false; pointer.dragUnit = null; pointer.moved = false;
+    if (cancelled) {
+      if (unit && wasMoved) { view.preview = null; setHover(-1); call('dragCancel', unit); }
+      needsDraw = true; return;
+    }
+    if (unit && wasMoved) {
+      var m = screenToMap(p[0], p[1]);
+      call('dragDrop', unit, pickProvince(m[0], m[1]));
+      setHover(-1);
+      needsDraw = true; return;
+    }
+    if (touch.multi || touch.longFired) { needsDraw = true; return; }
+    if (wasMoved) { startInertia(); return; }
+    handleTap(p[0], p[1]);
+  }
+  function startInertia() {
+    var s = touch.samples, now = performance.now();
+    if (s.length < 2) return;
+    var last = s[s.length - 1], first = s[0];
+    if (now - last[0] > 70) return;                 // palec zatrzymał się przed puszczeniem
+    var dt = (last[0] - first[0]) / 1000; if (dt < 0.008) return;
+    var vx = (last[1] - first[1]) / dt, vy = (last[2] - first[2]) / dt, sp = Math.hypot(vx, vy);
+    if (sp < 150) return;
+    if (sp > 3500) { vx *= 3500 / sp; vy *= 3500 / sp; }
+    inertia = { vx: vx, vy: vy }; needsDraw = true;
+  }
+  function handleTap(sx, sy) {
+    var now = performance.now(), lt = touch.lastTap;
+    if (lt && now - lt.t < DOUBLE_TAP_MS && Math.hypot(sx - lt.x, sy - lt.y) < DOUBLE_TAP_DIST) {
+      touch.lastTap = null;
+      animateZoomAt(sx, sy, 2);
+      return;
+    }
+    touch.lastTap = { t: now, x: sx, y: sy };
+    var m = screenToMap(sx, sy), prov = pickProvince(m[0], m[1]);
+    var u = pickUnitAt(sx, sy, TOUCH_UNIT_TOL);
+    if (R.handlers.tap) call('tap', prov, sx, sy, u);
+    else if (u) call('unitClick', u, false);
+    else call('click', prov, { shiftKey: false, pointerType: 'touch' });
+    needsDraw = true;
+  }
+  function onLongPress() {
+    if (!pointer.down || pointer.moved || touches.size !== 1) return;
+    touch.longFired = true; touch.infoShown = true;
+    var sx = pointer.sx, sy = pointer.sy, m = screenToMap(sx, sy), prov = pickProvince(m[0], m[1]);
+    var u = pickUnitAt(sx, sy, TOUCH_UNIT_TOL);
+    setHover(prov);
+    try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignoruj */ }
+    if (R.handlers.longPress) call('longPress', prov, sx, sy, u); else call('hover', prov, sx, sy, u);
+    needsDraw = true;
+  }
+  function hideTouchInfo() {
+    if (!touch.infoShown) return;
+    touch.infoShown = false;
+    setHover(-1); call('hover', -1, 0, 0, null);
+  }
+
+  // Safari (iOS i touchpad w macOS): własne zdarzenia gesture* — blokujemy zoom strony;
+  // na macOS (bez aktywnych dotyków) przekładamy je na zoom mapy.
+  var gestureScale = 1;
+  function onGestureStart(e) { e.preventDefault(); gestureScale = 1; }
+  function onGestureChange(e) {
+    e.preventDefault();
+    if (touches.size || e.target !== canvas || !e.scale) return;
+    var f = e.scale / gestureScale; gestureScale = e.scale;
+    var p = localXY(e); stopMotion(); zoomAt(p[0], p[1], f);
+  }
 
   function bindInput() {
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('pointercancel', function () { pointer.down = false; pointer.dragUnit = null; });
+    canvas.addEventListener('pointercancel', onPointerCancel);
     canvas.addEventListener('pointerleave', onLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    // touch-action: none na canvasie, a to — na wszelki wypadek (starsze WebKity) — blokuje przewijanie/zoom strony.
+    canvas.addEventListener('touchstart', function (e) { if (e.cancelable) e.preventDefault(); }, { passive: false });
+    canvas.addEventListener('touchmove', function (e) { if (e.cancelable) e.preventDefault(); }, { passive: false });
+    document.addEventListener('gesturestart', onGestureStart, { passive: false });
+    document.addEventListener('gesturechange', onGestureChange, { passive: false });
+    document.addEventListener('gestureend', function (e) { e.preventDefault(); }, { passive: false });
     window.addEventListener('resize', resize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', function () { setTimeout(resize, 120); });
     window.addEventListener('blur', function () { keysDown = {}; });
   }
   R.isDraggingUnit = function () { return !!(pointer.dragUnit && pointer.moved); };

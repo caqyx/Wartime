@@ -11,6 +11,7 @@ WT.ai = (function () {
   var WAR_POWER_RATIO = 1.6;
   var WAR_COOLDOWN = 30;
   var PLAYER_GRACE_TURNS = 8;
+  var REINFORCE_FREEZE_SHARE = 0.05;    // udział rekrutów w armii, od którego armia AI w wojnie traci ruch w turze uzupełnień
 
   function G() { return WT.G; }
   function turn() { return G().turn; }
@@ -28,6 +29,7 @@ WT.ai = (function () {
       manageEconomy(cc, i);
       manageRecruitment(cc, ctx, i);
       manageDiplomacy(cc, ctx, i);
+      if (staggered(i, AID_CHECK_EVERY)) manageAid(cc, ctx);
       manageArmies(cc, ctx, i);
       manageFleets(cc, ctx, i);
     });
@@ -146,7 +148,13 @@ WT.ai = (function () {
     var site = recruitSite(cc, c, atWar);
     if (site < 0) return;
     var k = Math.floor(Math.min(deficitK, c.manpower, affordableK(cc, c, site, atWar)));
-    if (k >= 2 && E().recruit(cc, site, k)) ctx.soldiers[cc] = (ctx.soldiers[cc] || 0) + k * 1000;
+    if (k < 2) return;
+    var army = E().recruit(cc, site, k);
+    if (!army) return;
+    ctx.soldiers[cc] = (ctx.soldiers[cc] || 0) + k * 1000;
+    // Balans AI: w wojnie armia przyjmująca uzupełnienia (stoi w miejscu rekrutacji) reorganizuje się przez turę.
+    // Gracz nie ma tej kary — u niego rekruci dołączają, a armia zachowuje ruch.
+    if (atWar && k * 1000 >= REINFORCE_FREEZE_SHARE * army.size) army.moved = Math.max(army.moved, Mil().MOVE_POINTS);
   }
 
   function affordableK(cc, c, site, atWar) {
@@ -292,6 +300,46 @@ WT.ai = (function () {
     return D().alliesOf(target).reduce(function (s, a) {
       return a !== attacker && D().relation(a, target) > 30 ? s + Mil().power(a) : s;
     }, Mil().power(target));
+  }
+
+  // =====================================================================
+  // Wsparcie: bogate AI czasem finansuje przegrywającego przyjaciela/sojusznika walczącego z jego rywalem
+  // =====================================================================
+
+  var AID_CHECK_EVERY = 8, AID_COOLDOWN = 16, AID_CHANCE = 0.35;
+
+  function manageAid(cc, ctx) {
+    var c = S.country(cc);
+    if (turn() - (c.ai.lastAid != null ? c.ai.lastAid : -99) < AID_COOLDOWN) return;
+    if (D().enemiesOf(cc).length || c.lastIncome - c.lastExpense <= 0) return;
+    var gdp = E().countryGdp(cc);
+    var surplus = c.treasury - Math.max(1.5 * reserveFor(c), gdp * 0.015);   // ponad ~12 tygodni wydatków
+    if (surplus < 2) return;
+    var r = pickAidRecipient(cc, ctx);
+    if (!r || !U.chance(AID_CHANCE)) return;
+    var amount = U.round(Math.min(surplus * 0.2, E().countryGdp(r) * 0.03, gdp * 0.005 + 2), 1);
+    if (amount >= 1 && D().giveMoney(cc, r, amount).ok) c.ai.lastAid = turn();
+  }
+
+  /** Przyjaciel (relacja ≥ 50) lub sojusznik, który przegrywa (wynik ≤ −15) wojnę z rywalem darczyńcy. */
+  function pickAidRecipient(cc, ctx) {
+    var best = null, bestScore = 0;
+    for (var k = 0; k < G().wars.length; k++) {
+      var w = G().wars[k];
+      if (D().sideOf(w, cc)) continue;
+      [w.attackers, w.defenders].forEach(function (side, si) {
+        var foes = si === 0 ? w.defenders : w.attackers;
+        if (!foes.some(function (e) { return D().relation(cc, e) < -30 && !D().allied(cc, e); })) return;
+        side.forEach(function (r) {
+          if (r === cc || !S.country(r).alive || D().atWar(cc, r)) return;
+          var rel = D().relation(cc, r);
+          if (rel < 50 && !D().allied(cc, r)) return;
+          var score = -(w.score[r] || 0);
+          if (score >= 15 && score + rel / 10 > bestScore) { best = r; bestScore = score + rel / 10; }
+        });
+      });
+    }
+    return best;
   }
 
   // =====================================================================

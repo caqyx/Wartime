@@ -119,6 +119,7 @@ test('budowy: koszt, czas, limity', function () {
 
 test('rekrutacja: koszt, rezerwy, moved=99, ograniczenia', function () {
   freshGame();
+  clearArmies();
   var c = G().countries.AAA, mp = c.manpower, t = c.treasury;
   var cost = WT.economy.recruitCost('AAA', 10, 20);
   var a = WT.economy.recruit('AAA', 10, 20);
@@ -129,6 +130,168 @@ test('rekrutacja: koszt, rezerwy, moved=99, ograniczenia', function () {
   eq(WT.economy.canRecruit('AAA', 2, 5).ok, false, 'cudza prowincja');
   c.manpower = 1;
   eq(WT.economy.canRecruit('AAA', 10, 5).ok, false, 'brak rezerw');
+});
+
+test('auto-scalanie: rekruci dołączają do stojącej armii bez utraty jej ruchu', function () {
+  freshGame();
+  clearArmies();
+  var base = WT.state.createArmy('AAA', 10, 30000);
+  var r = WT.economy.recruit('AAA', 10, 20);
+  eq(r, base, 'rekrutacja zwraca stojącą armię');
+  eq(WT.state.armiesIn(10).length, 1, 'jeden marker w prowincji');
+  eq(base.size, 50000, 'rekruci dołączyli');
+  eq(base.moved, 0, 'armia zachowuje punkty ruchu');
+  assert(WT.military.order(base.id, 0).ok, 'rozkaz całości');
+  WT.military.moveAll();
+  eq(base.prov, 0, 'scalona armia rusza w tej samej turze');
+  eq(base.size, 50000, 'cała armia w marszu');
+  var fresh = WT.economy.recruit('AAA', 20, 5);
+  eq(fresh.moved, 99, 'sam rekrut (bez stojącej armii) nie rusza się w tej turze');
+  WT.economy.recruit('AAA', 20, 5);
+  eq(WT.state.armiesIn(20).length, 1, 'dwie rekrutacje → jedna armia');
+  eq(WT.state.armiesIn(20)[0].size, 10000, 'suma rekrutów');
+});
+
+test('auto-scalanie: po dotarciu do celu, brak scalania w marszu, po wczytaniu', function () {
+  freshGame();
+  clearArmies();
+  var a = WT.state.createArmy('AAA', 0, 10000), b = WT.state.createArmy('AAA', 10, 20000);
+  WT.military.order(a.id, 10);
+  WT.military.moveAll();
+  var here = WT.state.armiesIn(10);
+  eq(here.length, 1, 'po dotarciu jedna armia');
+  eq(here[0].size, 30000, 'suma armii');
+  eq(here[0].id, b.id, 'zostaje większa armia');
+  // w marszu: armia z trasą nie łączy się ze stojącą
+  WT.military.resetMoves();
+  var m = WT.state.createArmy('AAA', 0, 5000), idle = WT.state.createArmy('AAA', 0, 7000);
+  m.path = [5, 10, 15];
+  WT.military.mergeAll();
+  eq(WT.state.armiesIn(0).length, 2, 'maszerująca armia nie scalona');
+  WT.military.moveAll();
+  WT.military.mergeAll();
+  eq(m.prov, 10, 'przechodzi przez prowincję ze stojącą armią');
+  assert(G().armies[m.id] && m.path.length === 1, 'w trakcie marszu nadal osobna');
+  eq(WT.state.armiesIn(10).length, 2, 'stojąca + maszerująca w jednej prowincji');
+  // zaokrętowana armia się nie scala
+  var e = WT.state.createArmy('AAA', 0, 3000);
+  WT.state.embarkArmy(e, 'fX');
+  WT.military.mergeAll();
+  assert(G().armies[e.id] && G().armies[idle.id], 'zaokrętowana armia nietknięta');
+  // wczytanie gry: stare zapisy z kilkoma stojącymi armiami w prowincji
+  WT.state.removeArmy(e.id);
+  WT.state.createArmy('AAA', 21, 1000); WT.state.createArmy('AAA', 21, 2000);
+  var json = WT.save.exportJSON();
+  assert(WT.save.importJSON(json), 'import');
+  eq(WT.state.armiesIn(21).length, 1, 'scalone po wczytaniu');
+  eq(WT.state.armiesIn(21)[0].size, 3000, 'suma po wczytaniu');
+  // koniec tury
+  WT.state.createArmy('AAA', 1, 1000); WT.state.createArmy('AAA', 1, 1500);
+  WT.turn.end();
+  var l = WT.state.armiesIn(1).filter(function (x) { return x.owner === 'AAA' && !x.path.length; });
+  eq(l.length, 1, 'scalone na koniec tury');
+});
+
+test('wsparcie: giveMoney — skarbiec, God Mode, relacje, odmowy', function () {
+  freshGame();
+  var c = G().countries.AAA, t = G().countries.CCC;
+  c.treasury = 100; t.treasury = 5;
+  setRel('AAA', 'CCC', 0);
+  var r = WT.diplomacy.giveMoney('AAA', 'CCC', 20);
+  assert(r.ok, r.reason);
+  assert(Math.abs(c.treasury - 80) < 1e-9, 'skarbiec darczyńcy −20');
+  assert(Math.abs(t.treasury - 25) < 1e-9, 'skarbiec odbiorcy +20');
+  var rel1 = WT.diplomacy.relation('AAA', 'CCC');
+  assert(rel1 > 0 && rel1 <= 20, 'relacje rosną (z limitem): ' + rel1);
+  WT.diplomacy.giveMoney('AAA', 'CCC', 1);
+  assert(WT.diplomacy.relation('AAA', 'CCC') - rel1 < rel1, 'mała kwota → mniejszy przyrost');
+  assert(G().log.some(function (l) { return /przekazuje/.test(l.text); }), 'wpis w dzienniku');
+  eq(WT.diplomacy.giveMoney('AAA', 'CCC', 1000).ok, false, 'brak środków');
+  eq(WT.diplomacy.giveMoney('AAA', 'CCC', 0).ok, false, 'kwota 0');
+  WT.diplomacy.startWar(['AAA'], ['BBB'], true);
+  var w = WT.diplomacy.giveMoney('AAA', 'BBB', 5);
+  assert(!w.ok && /wojny/.test(w.reason), 'odmowa dla wroga: ' + w.reason);
+  G().god = true;
+  var before = c.treasury;
+  assert(WT.diplomacy.giveMoney('AAA', 'CCC', 500).ok, 'God Mode bez limitu');
+  eq(c.treasury, before, 'God Mode: skarbiec się nie zmniejsza');
+});
+
+test('wsparcie: giveTroops — odmowy, miejsce pojawienia się, odjęcie z armii', function () {
+  freshGame();
+  clearArmies();
+  setRel('AAA', 'CCC', 20);
+  var src = WT.state.createArmy('AAA', 11, 50000), small = WT.state.createArmy('AAA', 0, 10000);
+  // stolica odbiorcy (prowincja źródłowa AAA nie należy do CCC)
+  var r = WT.diplomacy.giveTroops('AAA', 'CCC', 20000, 11);
+  assert(r.ok, r.reason);
+  eq(src.size, 30000, 'odjęto z armii w prowincji źródłowej');
+  eq(r.prov, G().countries.CCC.capital, 'wojsko w stolicy odbiorcy');
+  var inCap = WT.state.armiesIn(19).filter(function (a) { return a.owner === 'CCC'; });
+  eq(inCap.length, 1, 'scalone z armią odbiorcy');
+  eq(inCap[0].size, 20000, 'odbiorca dostał 20k');
+  assert(WT.diplomacy.relation('AAA', 'CCC') > 20, 'relacje rosną');
+  // bez sourceProv: z największej stojącej armii, nie z maszerującej
+  src.path = [10];
+  var r2 = WT.diplomacy.giveTroops('AAA', 'CCC', 5000);
+  assert(r2.ok, r2.reason);
+  eq(small.size, 5000, 'z największej stojącej armii');
+  eq(src.size, 30000, 'maszerująca nietknięta');
+  src.path = [];
+  eq(WT.diplomacy.availableTroops('AAA'), 35000, 'dostępne wojsko');
+  // cała armia przekazana → armia znika
+  WT.diplomacy.giveTroops('AAA', 'CCC', 5000, 0);
+  assert(!G().armies[small.id], 'cała armia przekazana');
+  // prowincja źródłowa na ziemi sojusznika odbiorcy → tam
+  WT.diplomacy.formAlliance('AAA', 'CCC');
+  var front = WT.state.createArmy('AAA', 12, 8000);
+  var r3 = WT.diplomacy.giveTroops('AAA', 'CCC', 8000, 12);
+  assert(r3.ok, r3.reason);
+  eq(r3.prov, 12, 'w prowincji źródłowej należącej do odbiorcy');
+  assert(!G().armies[front.id], 'źródłowa armia przekazana w całości');
+  eq(WT.state.armiesIn(12)[0].owner, 'CCC', 'armia odbiorcy w prowincji źródłowej');
+  // stolica okupowana → największa kontrolowana prowincja (źródło na ziemi AAA, już bez sojuszu)
+  WT.diplomacy.breakAlliance('AAA', 'CCC'); setRel('AAA', 'CCC', 30);
+  WT.diplomacy.startWar(['ISL'], ['CCC'], true);
+  WT.state.setCtrl(19, 'ISL');
+  var r4 = WT.diplomacy.giveTroops('AAA', 'CCC', 2000, 11);
+  assert(r4.ok, r4.reason);
+  assert(r4.prov !== 19 && G().provinces[r4.prov].ctrl === 'CCC', 'nie do okupowanej stolicy');
+  // odmowy
+  var war = WT.diplomacy.startWar(['AAA'], ['BBB'], true);
+  var w = WT.diplomacy.giveTroops('AAA', 'BBB', 5000);
+  assert(!w.ok && /wojny/.test(w.reason), 'odmowa dla wroga');
+  setRel('AAA', 'ISL', -10);
+  var neg = WT.diplomacy.giveTroops('AAA', 'ISL', 5000);
+  assert(!neg.ok && /relacje/.test(neg.reason), 'odmowa przy relacjach < 0: ' + neg.reason);
+  setRel('AAA', 'ISL', 30); setRel('AAA', 'CCC', 90);
+  WT.diplomacy.formAlliance('AAA', 'CCC');
+  var foe = WT.diplomacy.giveTroops('AAA', 'ISL', 5000);
+  assert(!foe.ok && /sojusznikiem/.test(foe.reason), 'odmowa dla wroga sojusznika: ' + foe.reason);
+  var before = soldiers('AAA');
+  eq(WT.diplomacy.giveTroops('AAA', 'CCC', 1000000).ok, true, 'kwota przycięta do dostępnych');
+  eq(soldiers('AAA'), 0, 'oddano wszystko co dostępne');
+  assert(before > 0, 'było co oddać');
+  eq(WT.diplomacy.giveTroops('AAA', 'CCC', 1000).ok, false, 'brak wojska');
+});
+
+test('AI: bogaty przyjaciel finansuje przegrywającego sojusznika', function () {
+  freshGame({ player: 'ISL' });
+  var war = WT.diplomacy.startWar(['BBB'], ['AAA'], true);
+  WT.state.provincesOf('AAA').slice(0, 6).forEach(function (id) { if (id !== 10) WT.state.setCtrl(id, 'BBB'); });
+  WT.diplomacy.warScore(war);
+  assert(war.score.AAA <= -15, 'AAA przegrywa: ' + war.score.AAA);
+  setRel('CCC', 'AAA', 80); setRel('CCC', 'BBB', -60);
+  G().pacts.push({ a: 'CCC', b: 'BBB', until: 9999 });   // darczyńca sam nie wchodzi do wojny
+  var c = G().countries.CCC; c.treasury = 400; c.lastIncome = 5; c.lastExpense = 1;
+  var got = false;
+  for (var i = 0; i < 160 && !got; i++) {
+    war.start = G().turn;                         // świeża wojna — strony nie zawrą pokoju w trakcie testu
+    c.treasury = Math.max(c.treasury, 300); c.lastIncome = 5; c.lastExpense = 1;
+    setRel('CCC', 'AAA', 80); setRel('CCC', 'BBB', -60);   // incydenty graniczne zmieniają relacje
+    WT.ai.runAll(); G().turn++; got = G().log.some(function (l) { return /Gamma przekazuje/.test(l.text); }); }
+  assert(got, 'AI przekazało pieniądze (log)');
+  assert(c.ai.lastAid >= 0, 'zapamiętany cooldown wsparcia');
 });
 
 test('pathfinding: A*, dostęp tylko w wojnie/sojuszu, brak drogi przez morze', function () {

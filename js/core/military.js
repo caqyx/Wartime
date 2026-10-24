@@ -136,17 +136,45 @@ WT.military = (function () {
     return !!a;
   }
 
-  /** Łączy bezczynne armie danego kraju w prowincji. Zwraca połączoną armię lub null. */
+  var FRESH = 99;                           // moved świeżo zrekrutowanej / wycofanej / wysadzonej armii
+  function isIdle(a) { return !a.embarked && !a.path.length; }
+
+  /**
+   * Łączy bezczynne (bez trasy, nie na okrętach) armie kraju w prowincji. Zostaje największa armia,
+   * która ma jeszcze ruch (moved < 99); świeżo zrekrutowani dołączają do niej i NIE odbierają jej punktów ruchu.
+   * Zwraca połączoną armię (albo jedyną bezczynną / null).
+   */
   function merge(provId, cc) {
-    var idle = S.armiesIn(provId).filter(function (a) { return a.owner === cc && !a.path.length; });
+    var idle = S.armiesIn(provId).filter(function (a) { return a.owner === cc && isIdle(a); });
     if (idle.length < 2) return idle[0] || null;
-    var main = idle[0];
-    for (var i = 1; i < idle.length; i++) {
+    var active = idle.filter(function (a) { return a.moved < FRESH; });
+    var pool = active.length ? active : idle;
+    var main = pool.reduce(function (b, a) { return a.size > b.size ? a : b; });
+    var moved = pool.reduce(function (m, a) { return Math.max(m, a.moved); }, 0);
+    for (var i = 0; i < idle.length; i++) {
+      if (idle[i] === main) continue;
       main.size += idle[i].size;
-      main.moved = Math.max(main.moved, idle[i].moved);
       S.removeArmy(idle[i].id);
     }
+    main.moved = moved;
     return main;
+  }
+
+  /** Automatyczne scalenie po zatrzymaniu się armii (gdy stoi bezczynnie). */
+  function mergeIfIdle(army) {
+    if (!army || !G().armies[army.id] || !isIdle(army)) return army;
+    return merge(army.prov, army.owner) || army;
+  }
+
+  /** Scala bezczynne armie wszystkich państw we wszystkich prowincjach (koniec tury, wczytanie gry). */
+  function mergeAll() {
+    S.provincesWithArmies().forEach(function (pid) {
+      var list = S.armiesIn(pid);
+      if (list.length < 2) return;
+      var count = {};
+      list.forEach(function (a) { if (isIdle(a)) count[a.owner] = (count[a.owner] || 0) + 1; });
+      Object.keys(count).forEach(function (cc) { if (count[cc] > 1) merge(pid, cc); });
+    });
   }
 
   /** Rozwiązanie armii: połowa żołnierzy wraca do rezerw. */
@@ -276,6 +304,7 @@ WT.military = (function () {
     army.moved = 99;
     if (dest < 0) { S.removeArmy(army.id); return false; }
     S.moveArmy(army, dest);
+    merge(dest, army.owner);
     return true;
   }
 
@@ -347,6 +376,7 @@ WT.military = (function () {
     army.moved += cost;
     if (hostile) army.moved = Math.max(army.moved, MOVE_POINTS);
     engageAt(next, army);
+    if (!army.path.length) mergeIfIdle(army);      // dotarła do celu → dołącza do stojącej tam armii
     return true;
   }
 
@@ -367,7 +397,7 @@ WT.military = (function () {
     var armies = G().armies;
     Object.keys(armies).forEach(function (id) {
       var a = armies[id];
-      if (a.embarked || !D().atWar(a.owner, G().provinces[a.prov].owner)) return;
+      if (!a || a.embarked || !D().atWar(a.owner, G().provinces[a.prov].owner)) return;
       a.size = Math.floor(a.size * (1 - ATTRITION));
       if (a.size < MIN_ARMY) S.removeArmy(id);
     });
@@ -423,10 +453,10 @@ WT.military = (function () {
     var armies = G().armies;
     Object.keys(armies).forEach(function (id) {
       var a = armies[id];
-      if (a.embarked || canEnter(a.owner, a.prov)) return;
+      if (!a || a.embarked || canEnter(a.owner, a.prov)) return;
       var home = nearestOwnProvince(a.owner, a.prov);
       a.path = [];
-      if (home < 0) S.removeArmy(id); else S.moveArmy(a, home);
+      if (home < 0) S.removeArmy(id); else { S.moveArmy(a, home); merge(home, a.owner); }
     });
   }
 
@@ -443,7 +473,7 @@ WT.military = (function () {
     MOVE_POINTS: MOVE_POINTS,
     canEnter: canEnter, isHostileTerritory: isHostileTerritory, moveCost: moveCost, hostileArmies: hostileArmies,
     findPath: findPath, findPathFor: findPathFor, estimateTurns: estimateTurns,
-    order: order, split: split, cancel: cancel, merge: merge, disband: disband,
+    order: order, split: split, cancel: cancel, merge: merge, mergeIfIdle: mergeIfIdle, mergeAll: mergeAll, disband: disband, MIN_ARMY: MIN_ARMY,
     power: power, invalidatePower: invalidatePower, battle: battle, retreat: retreat, engageAt: engageAt,
     moveAll: moveAll, stepArmy: stepArmy, resetMoves: resetMoves, applyAttrition: applyAttrition, engagedFraction: engagedFraction,
     resolveOccupations: resolveOccupations, occupy: occupy, expelTrespassers: expelTrespassers,
