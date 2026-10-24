@@ -108,13 +108,40 @@ test('budowy: koszt, czas, limity', function () {
   var cost = WT.economy.buildCost('AAA', 10, 'factory'), t0 = c.treasury;
   assert(WT.economy.build('AAA', 10, 'factory'), 'budowa rozpoczęta');
   assert(Math.abs(c.treasury - (t0 - cost)) < 1e-9, 'koszt pobrany');
-  eq(WT.economy.canBuild('AAA', 10, 'fort').ok, false, 'jedna budowa naraz');
+  eq(WT.economy.canBuild('AAA', 10, 'factory').ok, false, 'ten sam typ nie dwa razy naraz');
+  assert(WT.economy.build('AAA', 10, 'fort'), 'inny typ budowany równolegle');
+  assert(WT.economy.build('AAA', 10, 'barracks'), 'trzeci typ równolegle');
   var incBefore = WT.economy.income('AAA').total;
   for (var i = 0; i < WT.economy.BUILDINGS.factory.turns; i++) WT.economy.processTurn('AAA');
   eq(G().provinces[10].buildings.factory, 1, 'fabryka ukończona');
+  eq(G().provinces[10].buildings.fort, 2, 'fort ukończony równolegle (start 1 + 1)');
+  eq(G().provinces[10].buildings.barracks, 1, 'koszary ukończone równolegle');
+  eq(Object.keys(G().provinces[10].builds).length, 0, 'brak budów w toku');
   assert(WT.economy.income('AAA').total > incBefore, 'fabryka zwiększa dochód');
   G().provinces[10].buildings.fort = 5;
   eq(WT.economy.canBuild('AAA', 10, 'fort').ok, false, 'maks. poziom');
+});
+
+test('masowa budowa: wiele prowincji, pomijanie, limit pieniędzy, migracja zapisu', function () {
+  freshGame();
+  var c = G().countries.AAA, mine = WT.state.provincesOf('AAA');
+  c.treasury = 1000;
+  WT.economy.build('AAA', mine[0], 'factory');
+  var plan = WT.economy.bulkPlan('AAA', mine.concat([2]), 'factory');
+  eq(plan.eligible.length, mine.length - 1, 'kwalifikują się wszystkie poza budującą i cudzą');
+  eq(Object.keys(plan.skipped).length, 2, 'dwa powody pominięcia');
+  var res = WT.economy.buildMany('AAA', mine, 'factory');
+  eq(res.built.length, mine.length - 1, 'zbudowano w pozostałych');
+  assert(mine.every(function (id) { return G().provinces[id].builds.factory; }), 'fabryka w toku wszędzie');
+  var ports = WT.economy.buildMany('AAA', mine, 'port');
+  assert(ports.skipped['Port wymaga prowincji nadmorskiej.'] > 0, 'port pomija śródlądowe');
+  c.treasury = WT.economy.buildCost('AAA', mine[0], 'barracks') * 1.5;
+  var poor = WT.economy.buildMany('AAA', mine, 'barracks');
+  assert(poor.built.length >= 1 && poor.noMoney > 0, 'staje, gdy brak pieniędzy');
+  var g = JSON.parse(JSON.stringify(G()));
+  g.provinces[mine[0]].build = { type: 'fort', turnsLeft: 2 }; delete g.provinces[mine[0]].builds;
+  WT.save.importJSON(JSON.stringify(g));
+  eq(G().provinces[mine[0]].builds.fort, 2, 'stary slot build zmigrowany');
 });
 
 test('rekrutacja: koszt, rezerwy, moved=99, ograniczenia', function () {

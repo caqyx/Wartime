@@ -17,6 +17,7 @@
     startCC: null,
     sel: null,              // { type: 'army'|'fleet', id }
     selProv: -1,
+    multi: null,            // tablica id prowincji w trybie zaznaczania wielu (null = tryb wyłączony)
     diploCC: null,
     diploQuery: '',
     godTool: null,          // 'take' | 'army'
@@ -169,6 +170,7 @@
     landmark: '<path d="M3 21h18M5 18h14M6 18v-7M10 18v-7M14 18v-7M18 18v-7M3 9l9-6 9 6z"/>',
     download: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
     upload: '<path d="M12 16V5M7 10l5-5 5 5M5 20h14"/>',
+    select: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17.5l2 2 4.5-4.5"/>',
     mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/>'
   };
   function icon(name, cls) {
@@ -370,7 +372,7 @@
     return [el.offsetWidth + 18, 0];
   }
   function showStart() {
-    S.inGame = false; S.sel = null; S.selProv = -1; S.godTool = null;
+    S.inGame = false; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.godTool = null;
     document.body.classList.remove('in-game', 'ob-open');
     ['topbar', 'mapmodes', 'log', 'province-panel', 'diplo-panel', 'god-panel', 'order-bar', 'menu', 'legend'].forEach((id) => $(id).classList.add('hidden'));
     $('start-screen').classList.remove('hidden');
@@ -412,7 +414,7 @@
   // Wejście do gry / odświeżanie
   // ===========================================================================
   function enterGame(centerView) {
-    S.inGame = true; S.sel = null; S.selProv = -1; S.diploCC = null; S.godTool = null; S.answered = {}; S.gameOverShown = false; S.proposalOpen = false;
+    S.inGame = true; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.diploCC = null; S.godTool = null; S.answered = {}; S.gameOverShown = false; S.proposalOpen = false;
     $('start-screen').classList.add('hidden');
     document.body.classList.add('in-game');
     ['topbar', 'mapmodes', 'log'].forEach((id) => $(id).classList.remove('hidden'));
@@ -431,7 +433,8 @@
     if (!S.inGame || !G()) return;
     S.lastHoverKey = '';
     renderTopbar();
-    if (!$('province-panel').classList.contains('hidden')) renderProvincePanel();
+    if (S.multi) renderMultiPanel();
+    else if (!$('province-panel').classList.contains('hidden')) renderProvincePanel();
     if (!$('diplo-panel').classList.contains('hidden')) renderDiplomacy();
     if (!$('god-panel').classList.contains('hidden')) renderGodPanel();
     renderLog();
@@ -713,6 +716,7 @@
   // ===========================================================================
   function openProvince(id) {
     if (id == null || id < 0) return;
+    if (S.multi) { S.multi = null; syncMultiView(); }
     S.selProv = id; R().view.selProv = id;
     if (isMobile()) { closeDiplomacy(); if (!S.godTool) closeGodPanel(); }
     $('province-panel').classList.remove('hidden', 'sheet-collapsed', 'sheet-expanded');
@@ -797,13 +801,14 @@
       const cost = isGod() ? 'darmo' : fmtNum(price, 1) + ' mld';
       h += '<div class="build-row"><div title="' + esc(def.desc || '') + '"><span class="build-ico">' + icon(BUILDING_ICONS[type] || 'landmark') + '</span><span class="build-txt"><span class="build-name">' + esc(def.name || type) + '</span><span class="pips">' + pips + '</span></span></div>' +
         '<span class="build-lvl">' + cost + (def.turns && !isGod() ? ' · ' + def.turns + 't' : '') + '</span>' +
-        '<button class="btn btn-sm" data-build="' + type + '"' + (can.ok ? '' : ' disabled') + ' title="' + esc(can.ok ? 'Buduj ' + (def.name || type) + (def.desc ? ' — ' + def.desc : '') : can.reason || '') + '">Buduj</button></div>';
+        '<button class="btn btn-sm" data-build="' + type + '"' + (can.ok ? '' : ' disabled') + ' title="' + esc(can.ok ? 'Buduj ' + (def.name || type) + (def.desc ? ' — ' + def.desc : '') : can.reason || '') + '">' + ((pd.builds || {})[type] ? 'W budowie' : 'Buduj') + '</button></div>';
     });
-    if (pd.build) {
-      const def = B[pd.build.type] || {}, total = def.turns || pd.build.turnsLeft || 1;
-      const pct = Math.round(100 * (1 - pd.build.turnsLeft / total));
-      h += '<div class="hint">W budowie: <b>' + esc(def.name || pd.build.type) + '</b> — ' + turnsText(pd.build.turnsLeft) + '</div><div class="progress"><i style="width:' + pct + '%"></i></div>';
-    }
+    Object.keys(pd.builds || {}).forEach((type) => {
+      const def = B[type] || {}, left = pd.builds[type], total = def.turns || left || 1;
+      const pct = Math.round(100 * (1 - left / total));
+      h += '<div class="hint">W budowie: <b>' + esc(def.name || type) + '</b> — ' + turnsText(left) + '</div><div class="progress"><i style="width:' + pct + '%"></i></div>';
+    });
+    h += '<div class="row-actions"><button class="btn btn-sm" data-act="multi">' + icon('select') + ' Buduj w wielu prowincjach</button></div>';
     return h + '</div>';
   }
   function recruitMax() {
@@ -901,6 +906,7 @@
     else if (act === 'diplo') openDiplomacy(provDyn(id).owner);
     else if (act === 'merge') mergeHere(id);
     else if (act === 'give') openGiveArmyModal(id);
+    else if (act === 'multi') startMulti([id]);
     else if (act === 'cancel' && S.sel) { call('military.cancel', [S.sel.id]); refreshAll(); }
     else if (act === 'disband' && S.sel) {
       const a = unitObj(S.sel);
@@ -1468,15 +1474,103 @@
   }
 
   // ===========================================================================
+  // Zaznaczanie wielu prowincji i masowa budowa
+  // ===========================================================================
+  function startMulti(initial) {
+    if (!S.inGame) return;
+    deselect();
+    closeOrderBar();
+    if (isMobile()) { closeDiplomacy(); closeGodPanel(); }
+    S.multi = (initial || []).filter((id) => id >= 0 && provDyn(id).owner === me());
+    syncMultiView();
+    $('province-panel').classList.remove('hidden', 'sheet-collapsed', 'sheet-expanded');
+    renderMultiPanel();
+    if (isTouch()) toast('Stuknij prowincje, aby je zaznaczyć', '', 2200);
+  }
+  function exitMulti() {
+    S.multi = null;
+    syncMultiView();
+    if (S.selProv >= 0) renderProvincePanel(); else $('province-panel').classList.add('hidden');
+  }
+  function syncMultiView() {
+    R().view.multi = S.multi ? S.multi.slice() : null;
+    const b = $('zc-multi');
+    if (b) { b.classList.toggle('active', !!S.multi); b.setAttribute('aria-pressed', S.multi ? 'true' : 'false'); }
+    R().requestDraw();
+  }
+  function toggleMulti(prov) {
+    if (prov < 0) return;
+    if (provDyn(prov).owner !== me()) { toast('Zaznaczać można tylko własne prowincje', 'bad', 1800); return; }
+    if (!S.multi) startMulti([]);   // Shift+klik na armii poza trybem zaznaczania
+    const i = S.multi.indexOf(prov);
+    if (i >= 0) S.multi.splice(i, 1); else S.multi.push(prov);
+    syncMultiView();
+    renderMultiPanel();
+  }
+  function setMulti(ids) { S.multi = ids; syncMultiView(); renderMultiPanel(); }
+  /** Szybkie zestawy: wszystkie kontrolowane, nadmorskie, przygraniczne (sąsiad innego państwa). */
+  function multiPreset(kind) {
+    const mine = provincesOf(me()).filter((id) => provDyn(id).ctrl === me());
+    if (kind === 'all') return mine;
+    if (kind === 'coast') return mine.filter((id) => provStatic(id).coastal);
+    if (kind === 'border') return mine.filter((id) => (provStatic(id).nb || []).some((n) => provDyn(n).owner !== me()));
+    return [];
+  }
+  function renderMultiPanel() {
+    if (!S.multi || !G()) return;
+    const B = (WT.economy && WT.economy.BUILDINGS) || {}, n = S.multi.length;
+    let html = '<div class="panel-head">' + icon('select') + '<h2>Zaznaczone prowincje: ' + n + '</h2><button class="close" data-mact="exit" title="Zakończ zaznaczanie (Esc)" aria-label="Zakończ">' + icon('x') + '</button></div><div class="panel-body">';
+    html += '<div class="section"><div class="hint">' + (isTouch() ? 'Stuknij' : 'Kliknij') + ' prowincję, aby ją dodać lub usunąć' + (isTouch() ? '.' : ' (Shift+klik działa też poza tym trybem).') + '</div>' +
+      '<div class="row-actions multi-presets"><button class="btn btn-sm" data-mact="all">Wszystkie moje</button><button class="btn btn-sm" data-mact="coast">Nadmorskie</button>' +
+      '<button class="btn btn-sm" data-mact="border">Przygraniczne</button><button class="btn btn-sm" data-mact="clear"' + (n ? '' : ' disabled') + '>Wyczyść</button></div></div>';
+    html += '<div class="section"><div class="section-title">Buduj na wszystkich</div>';
+    Object.keys(B).forEach((type) => { html += multiBuildRow(type, B[type], n); });
+    html += '</div></div>';
+    const panel = $('province-panel'), scroll = panel.scrollTop;
+    panel.innerHTML = html;
+    panel.scrollTop = scroll;
+    panel.querySelectorAll('[data-mact]').forEach((b) => b.addEventListener('click', () => onMultiAction(b.dataset.mact)));
+    panel.querySelectorAll('[data-mbuild]').forEach((b) => b.addEventListener('click', () => doBuildMany(b.dataset.mbuild)));
+  }
+  function multiBuildRow(type, def, n) {
+    const plan = n ? call('economy.bulkPlan', [me(), S.multi, type], null) : null;
+    const k = plan ? plan.eligible.length : 0;
+    const price = isGod() ? 'darmo' : fmtNum(plan ? plan.cost : 0, 1) + ' mld';
+    const skipped = plan ? Object.keys(plan.skipped).map((r) => plan.skipped[r] + '× ' + r).join(' · ') : '';
+    return '<div class="build-row"><div title="' + esc(def.desc || '') + '"><span class="build-ico">' + icon(BUILDING_ICONS[type] || 'landmark') + '</span><span class="build-txt"><span class="build-name">' + esc(def.name || type) + '</span>' +
+      '<span class="dim multi-count">' + k + ' z ' + n + '</span></span></div>' +
+      '<span class="build-lvl">' + price + (def.turns && !isGod() ? ' · ' + def.turns + 't' : '') + '</span>' +
+      '<button class="btn btn-sm" data-mbuild="' + type + '"' + (k ? '' : ' disabled') + '>Buduj (' + k + ')</button></div>' +
+      (skipped ? '<div class="reason multi-skip">Pominięte: ' + esc(skipped) + '</div>' : '');
+  }
+  function onMultiAction(act) {
+    if (act === 'exit') exitMulti();
+    else if (act === 'clear') setMulti([]);
+    else setMulti(multiPreset(act));
+  }
+  function doBuildMany(type) {
+    const def = (WT.economy.BUILDINGS || {})[type] || {};
+    const res = call('economy.buildMany', [me(), S.multi, type], null);
+    if (!res) { toast('Nie można budować', 'bad'); return; }
+    if (res.built.length) {
+      toast((isGod() ? 'Zbudowano: ' : 'Rozpoczęto budowę: ') + (def.name || type) + ' w ' + res.built.length + ' ' + plural(res.built.length, 'prowincji', 'prowincjach', 'prowincjach') +
+        (isGod() ? '' : ' za ' + fmtNum(res.cost, 1) + ' mld $') + (res.noMoney ? ' — zabrakło środków na ' + res.noMoney : ''), res.noMoney ? '' : 'ok', 3200);
+    } else toast(res.noMoney ? 'Brak środków na budowę' : 'Żadna z zaznaczonych prowincji nie może tego zbudować', 'bad');
+    if (R().getMode() === 'economic') R().invalidate();
+    refreshAll();
+  }
+
+  // ===========================================================================
   // Obsługa zdarzeń mapy (WT.render.handlers)
   // ===========================================================================
   function canDragUnit(u) {
     if (!S.inGame || !G() || u.owner !== me()) return false;
     return u.type === 'fleet' || u.type === 'army';
   }
-  function onUnitClick(u) {
+  function onUnitClick(u, shift) {
     if (!S.inGame) return;
     if (S.godTool) { applyGodTool(u.prov); return; }
+    if (S.multi || shift) { toggleMulti(u.prov); return; }
     if (u.type === 'army' && u.owner === me() && !(S.sel && S.sel.id === u.id)) {
       const lead = primaryArmyAt(u.prov);
       if (lead && !(G().armies[u.id] && G().armies[u.id].path.length === 0)) u = { type: 'army', id: lead.id, owner: lead.owner, prov: lead.prov };
@@ -1486,9 +1580,16 @@
       else selectUnit(u);
     } else openProvince(u.prov);
   }
-  function onMapClick(prov) {
+  function onMapClick(prov, ev) {
     if (!S.inGame) { if (prov >= 0) selectStartCountry(R().ownerOf(prov), false); return; }
     if (S.godTool) { applyGodTool(prov); return; }
+    // Shift/Ctrl+klik albo aktywny tryb zaznaczania: dodaj/usuń prowincję z zaznaczenia wielu
+    const additive = ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey);
+    if (S.multi || (additive && prov >= 0)) {
+      if (!S.multi) startMulti(S.selProv >= 0 && S.selProv !== prov && provDyn(S.selProv).owner === me() ? [S.selProv] : []);
+      toggleMulti(prov);
+      return;
+    }
     if (orderBarOpen()) closeOrderBar();
     const wasSel = unitObj(S.sel);
     if (S.sel) deselect();
@@ -1515,6 +1616,7 @@
   function onTap(prov, sx, sy, unit) {
     if (!S.inGame) { onMapClick(prov); return; }
     if (S.godTool) { applyGodTool(unit ? unit.prov : prov); return; }
+    if (S.multi) { toggleMulti(unit ? unit.prov : prov); return; }
     const selU = unitObj(S.sel);
     if (unit) {
       if (unit.owner === me() || !selU || selU.owner !== me()) { onUnitClick(unit); return; }
@@ -1557,6 +1659,11 @@
   function bindZoomControls() {
     $('zc-in').addEventListener('click', () => R().zoomAnimated(1.6));
     $('zc-out').addEventListener('click', () => R().zoomAnimated(1 / 1.6));
+    $('zc-multi').innerHTML = icon('select');
+    $('zc-multi').addEventListener('click', () => {
+      if (!S.inGame) return;
+      if (S.multi) exitMulti(); else startMulti(S.selProv >= 0 && provDyn(S.selProv).owner === me() ? [S.selProv] : []);
+    });
     $('zc-home').addEventListener('click', () => {
       if (S.inGame && me()) R().centerOnCountry(me(), 0.8);
       else centerStartView();
@@ -1617,6 +1724,7 @@
     if (closeTopModal()) return;
     if (!$('menu').classList.contains('hidden')) { toggleMenu(false); return; }
     if (orderBarOpen()) { closeOrderBar(); R().requestDraw(); return; }
+    if (S.multi) { exitMulti(); return; }
     if (S.godTool) { S.godTool = null; updateCursor(); if (!$('god-panel').classList.contains('hidden')) renderGodPanel(); return; }
     if (S.sel) { deselect(); return; }
     if (!$('diplo-panel').classList.contains('hidden')) { closeDiplomacy(); return; }
@@ -1640,6 +1748,7 @@
     }
     const digit = /^Digit([1-4])$/.exec(e.code) || /^Numpad([1-4])$/.exec(e.code);
     if (digit) { setMapMode(MODES[+digit[1] - 1]); return; }
+    if (e.code === 'KeyB') { if (S.multi) exitMulti(); else startMulti(S.selProv >= 0 && provDyn(S.selProv).owner === me() ? [S.selProv] : []); return; }
     if (e.code === 'KeyM') { const u = unitObj(S.sel); mergeHere(u ? u.prov : S.selProv); }
   }
   function bindKeys() {

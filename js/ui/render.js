@@ -56,7 +56,7 @@
 
   // Stan interakcji ustawiany przez WT.ui
   var view = {
-    hoverProv: -1, selProv: -1,
+    hoverProv: -1, selProv: -1, multi: null,
     sel: null,                     // { type: 'army'|'fleet', id }
     preview: null,                 // plan trasy (podgląd)
     pending: null,                 // plan czekający na potwierdzenie w pasku rozkazu
@@ -661,6 +661,7 @@
       ctx.fillStyle = COLORS.hover; ctx.fill(provPaths[view.hoverProv]);
       ctx.strokeStyle = COLORS.hoverEdge; ctx.lineWidth = 1.1 * lw; ctx.stroke(provPaths[view.hoverProv]);
     }
+    if (view.multi && view.multi.length) drawMultiSelection(lw);
     if (view.selProv >= 0) {
       // zaznaczenie: statyczna poświata akcentu (szeroki półprzezroczysty obrys + ostra linia), bez animacji
       var sp = provPaths[view.selProv];
@@ -676,6 +677,17 @@
       var rgb = ok ? (((view.pending || view.preview).kind === 'land') ? COLORS.accentRgb : '143,168,255') : '255,107,107';
       ctx.fillStyle = 'rgba(' + rgb + ',0.20)'; ctx.fill(provPaths[target]);
       ctx.strokeStyle = 'rgba(' + rgb + ',0.85)'; ctx.lineWidth = 1.4 * lw; ctx.stroke(provPaths[target]);
+    }
+  }
+  // Zaznaczenie wielu prowincji (masowa budowa): wypełnienie akcentem + obrys
+  function drawMultiSelection(lw) {
+    ctx.lineJoin = 'round';
+    ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.24)';
+    ctx.strokeStyle = COLORS.select; ctx.lineWidth = 1.4 * lw;
+    for (var i = 0; i < view.multi.length; i++) {
+      var path = provPaths[view.multi[i]];
+      if (!path) continue;
+      ctx.fill(path); ctx.stroke(path);
     }
   }
   function drawCountryHighlight(cc, lw) {

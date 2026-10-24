@@ -56,7 +56,7 @@ WT.state = (function () {
       g.provinces.push({
         owner: provs[i].cc, ctrl: provs[i].cc,
         buildings: { factory: 0, fort: 0, port: 0, barracks: 0 },
-        build: null, unrest: 0, dev: 1.0, gdp: 0, siege: null
+        builds: {}, unrest: 0, dev: 1.0, gdp: 0, siege: null
       });
     }
   }
@@ -387,7 +387,7 @@ WT.state = (function () {
       indexRemove(idx.byOwner, p.owner, provId);
       indexAdd(idx.byOwner, cc, provId);
       p.owner = cc;
-      p.build = null;          // budowa poprzedniego właściciela przepada
+      p.builds = {};           // budowy poprzedniego właściciela przepadają
     }
     setCtrl(provId, cc);
   }

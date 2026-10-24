@@ -153,7 +153,8 @@ WT.economy = (function () {
     if (!b) return { ok: false, reason: 'Nieznany typ budynku.' };
     if (!p || p.owner !== cc) return { ok: false, reason: 'To nie jest twoja prowincja.' };
     if (p.ctrl !== cc) return { ok: false, reason: 'Prowincja jest okupowana.' };
-    if (p.build) return { ok: false, reason: 'W prowincji trwa już budowa (' + BUILDINGS[p.build.type].name + ').' };
+    var inProgress = buildsOf(p)[type];
+    if (inProgress) return { ok: false, reason: b.name + ': budowa już trwa (' + inProgress + ' t.).' };
     if (p.buildings[type] >= b.max) return { ok: false, reason: b.name + ': osiągnięto maksymalny poziom (' + b.max + ').' };
     if (type === 'port' && !S.provStatic(provId).coastal) return { ok: false, reason: 'Port wymaga prowincji nadmorskiej.' };
     var cost = buildCost(cc, provId, type);
@@ -167,18 +168,52 @@ WT.economy = (function () {
     pay(cc, chk.cost);
     var p = G().provinces[provId];
     if (isGodFor(cc)) p.buildings[type]++;
-    else p.build = { type: type, turnsLeft: BUILDINGS[type].turns };
+    else buildsOf(p)[type] = BUILDINGS[type].turns;
     return true;
+  }
+
+  /** Budowy w toku: { typ: pozostałe tury } — różne typy budują się równolegle, ten sam typ tylko raz naraz. */
+  function buildsOf(p) {
+    if (!p.builds) p.builds = {};
+    return p.builds;
+  }
+
+  /** Podsumowanie masowej budowy: ile prowincji się kwalifikuje, łączny koszt, powody pominięcia. */
+  function bulkPlan(cc, provIds, type) {
+    var plan = { type: type, eligible: [], cost: 0, skipped: {} };
+    provIds.forEach(function (id) {
+      var chk = canBuild(cc, id, type);
+      if (chk.ok || /^Brak środków/.test(chk.reason)) {
+        plan.eligible.push(id);
+        plan.cost = U.round(plan.cost + buildCost(cc, id, type), 2);
+      } else {
+        plan.skipped[chk.reason] = (plan.skipped[chk.reason] || 0) + 1;
+      }
+    });
+    return plan;
+  }
+
+  /** Buduje `type` we wszystkich podanych prowincjach, w których to możliwe (najtańsze najpierw, póki starcza pieniędzy). */
+  function buildMany(cc, provIds, type) {
+    var plan = bulkPlan(cc, provIds, type), built = [], spent = 0, noMoney = 0;
+    plan.eligible.slice().sort(function (a, b) { return buildCost(cc, a, type) - buildCost(cc, b, type); })
+      .forEach(function (id) {
+        var cost = buildCost(cc, id, type);
+        if (build(cc, id, type)) { built.push(id); spent += cost; } else noMoney++;
+      });
+    return { built: built, cost: U.round(spent, 2), noMoney: noMoney, skipped: plan.skipped };
   }
 
   function progressBuildings(cc) {
     S.provincesOf(cc).forEach(function (id) {
-      var p = G().provinces[id];
-      if (!p.build || p.ctrl !== cc) return;
-      if (--p.build.turnsLeft > 0) return;
-      p.buildings[p.build.type]++;
-      if (cc === G().player) S.addLog('Ukończono: ' + BUILDINGS[p.build.type].name + ' (poz. ' + p.buildings[p.build.type] + ') w ' + S.provStatic(id).name + '.', cc);
-      p.build = null;
+      var p = G().provinces[id], builds = buildsOf(p);
+      if (p.ctrl !== cc) return;
+      Object.keys(builds).forEach(function (type) {
+        if (--builds[type] > 0) return;
+        delete builds[type];
+        p.buildings[type]++;
+        if (cc === G().player) S.addLog('Ukończono: ' + BUILDINGS[type].name + ' (poz. ' + p.buildings[type] + ') w ' + S.provStatic(id).name + '.', cc);
+      });
     });
   }
 
@@ -316,7 +351,7 @@ WT.economy = (function () {
   return {
     BUILDINGS: BUILDINGS, TAX_MIN: TAX_MIN, TAX_MAX: TAX_MAX,
     income: income, expenses: expenses, balance: balance, setTax: setTax,
-    canBuild: canBuild, build: build, buildCost: buildCost,
+    canBuild: canBuild, build: build, buildCost: buildCost, buildsOf: buildsOf, bulkPlan: bulkPlan, buildMany: buildMany,
     recruitCost: recruitCost, canRecruit: canRecruit, recruit: recruit,
     buildShipsCost: buildShipsCost, canBuildShips: canBuildShips, buildShips: buildShips,
     processTurn: processTurn,

@@ -43,9 +43,18 @@ WT.save = (function () {
     var map = WT.util.mapData();
     if (map && map.provinces.length !== g.provinces.length) return false;
     WT.G = g;
+    migrateBuilds(g);
     WT.state.rebuildIndex();
     if (WT.military && WT.military.mergeAll) WT.military.mergeAll();   // stare zapisy: scal stojące armie
     return true;
+  }
+
+  // Zapisy sprzed budów równoległych: pojedynczy slot `build` → mapa `builds`.
+  function migrateBuilds(g) {
+    g.provinces.forEach(function (p) {
+      if (!p.builds) p.builds = {};
+      if (p.build) { p.builds[p.build.type] = p.build.turnsLeft; delete p.build; }
+    });
   }
 
   function load(slot) {

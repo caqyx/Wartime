@@ -140,7 +140,7 @@ G = {
   },
   provinces: [                     // zmienne dane prowincji (statyczne w MAP_DATA)
     { owner: "POL", ctrl: "POL", buildings: { factory:0, fort:0, port:0, barracks:0 },
-      build: null | { type, turnsLeft }, unrest: 0, dev: 1.0 }
+      builds: { factory?: turnsLeft, fort?: ..., port?: ..., barracks?: ... }  // budowy równoległe, max 1 na typ, unrest: 0, dev: 1.0 }
   ],
   armies: { "a17": { id, owner, prov, size /*żołnierze*/, path: [provIds], moved: 0, embarked: null|fleetId } },
   fleets: { "f3":  { id, owner, prov /*prow. nadmorska*/, ships, path: [provIds], cargo: [armyIds] } },
@@ -168,7 +168,8 @@ G = {
 ### WT.economy
 - `income(cc) → { tax, factories, total }`, `expenses(cc) → { army, navy, buildings, total }`, `balance(cc)`.
 - `BUILDINGS = { factory:{name,cost,turns,max}, fort:{...}, port:{...}, barracks:{...} }`.
-- `canBuild(cc, provId, type) → { ok, reason }`, `build(cc, provId, type) → bool`.
+- `canBuild(cc, provId, type) → { ok, reason }`, `build(cc, provId, type) → bool` — różne typy równolegle, ten sam typ odrzucany w trakcie budowy.
+- `bulkPlan(cc, provIds, type) → { eligible, cost, skipped: {powód: liczba} }`, `buildMany(cc, provIds, type) → { built, cost, noMoney, skipped }` (najtańsze najpierw), `buildsOf(prov) → {typ: tury}`. Stare zapisy (`build`) migrowane w `save`.
 - `recruitCost(cc, provId, sizeK)` → mld USD; `canRecruit(...)`, `recruit(cc, provId, sizeK) → army|null` (armia pojawia się od razu, ale ma `moved=99` w tej turze).
 - `buildShipsCost(n)`, `buildShips(cc, provId, n) → fleet|null` (wymaga portu).
 - `setTax(cc, rate)`.

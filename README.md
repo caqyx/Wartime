@@ -20,6 +20,7 @@ python3 -m http.server 8000   # http://localhost:8000
 | Desant | jak ruch, cel za morzem — wymaga własnej floty w porcie z armią |
 | Koniec tury | Spacja |
 | Tryby mapy | 1 polityczna, 2 dyplomacja, 3 ekonomia, 4 teren |
+| Budowa w wielu prowincjach | przycisk zaznaczania przy zoomie / `B` / Shift(Ctrl)+klik → klikaj prowincje lub „Wszystkie moje / Nadmorskie / Przygraniczne” → „Buduj (N)” |
 | Scal armie w prowincji | M (zwykle niepotrzebne — scalanie jest automatyczne) |
 | Wsparcie państwa | Dyplomacja → państwo → „Wsparcie” (pieniądze / wojsko); panel prowincji → „Przekaż armię…” |
 | Odznacz / zamknij | Esc |
@@ -42,7 +43,7 @@ python3 -m http.server 8000   # http://localhost:8000
 - **Bitwy:** liczebność × technologia × morale, bonus obrońcy za fort i teren, ograniczona szerokość frontu. Wolna prowincja wroga zostaje okupowana (fort = oblężenie).
 - **Auto-scalanie armii:** armie jednego państwa stojące w tej samej prowincji łączą się same (po rekrutacji, dotarciu do celu, desancie, odwrocie, wczytaniu gry i na koniec tury). Rekruci dołączają do stojącej armii, która zachowuje punkty ruchu. Armie w marszu i na okrętach scalają się dopiero, gdy staną. Marker pokazuje sumę wojsk państwa w prowincji.
 - **Wsparcie innych państw:** przelew pieniędzy ze skarbca (w God Mode za darmo) i przekazanie żołnierzy przyjacielowi/sojusznikowi (relacje ≥ 0, nie wrogowi twojego sojusznika). Wojsko trafia do prowincji źródłowej, jeśli leży na ziemi odbiorcy lub jego sojusznika, inaczej do stolicy odbiorcy. Oba poprawiają relacje. Lista wojen pokazuje, kto przegrywa. Bogate AI czasem finansuje przegrywającego przyjaciela walczącego z jego rywalem.
-- **Ekonomia:** PKB 2026, podatki, utrzymanie armii/floty, administracja. Budynki: fabryka, fort, port, koszary.
+- **Ekonomia:** PKB 2026, podatki, utrzymanie armii/floty, administracja. Budynki: fabryka, fort, port, koszary — różne typy budują się w prowincji równolegle, ten sam typ tylko raz naraz. Masowa budowa na zaznaczonych prowincjach pomija te, gdzie się nie da (z powodem), i buduje od najtańszych, póki starcza pieniędzy.
 - **Dyplomacja:** wojna, pokój (biały / aneksja okupowanych / reparacje), sojusze obronne zawierane w trakcie gry, pakty o nieagresji, relacje.
 - **Flota:** eskadry poruszają się po grafie morskim, przewożą wojsko (1 eskadra = 10 tys.), bitwy morskie.
 - **God Mode:** nielimitowana kasa i rezerwy, natychmiastowe budowy, przejmowanie prowincji, dodawanie armii, wymuszanie pokoju/sojuszu, ustawianie relacji. Włączany na starcie lub w trakcie gry.
