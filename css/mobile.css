@@ -171,7 +171,7 @@ button, .country-item, .army-row, .log-head, .check { -webkit-tap-highlight-colo
   .start-panel .check, .start-panel .start-options { order: 4; }
   .start-actions {
     order: 5; position: sticky; bottom: 0; z-index: 5; isolation: isolate; margin: 0 -14px; padding: 8px 14px calc(10px + var(--sa-b));
-    background: var(--glass-bg-solid, var(--bg-1));
+    background: rgb(13, 19, 29);   /* w pełni kryjące — lista państw nie może prześwitywać pod przyciskami */
   }
   .start-actions .btn { min-height: 48px; }
   .start-hint { top: calc(8px + var(--sa-t)); bottom: auto; left: calc(8px + var(--sa-l)); right: calc(8px + var(--sa-r)); text-align: center; }

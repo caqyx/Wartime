@@ -883,3 +883,8 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .start-options .aggr-row input[type=range] { grid-column: 1 / -1; }
 .start-options .aggr-row .aggr-lbl { color: var(--text-1); }
 .start-options .aggr-row .aggr-val { color: var(--acc-200); }
+
+/* Wyłączony „Rozpocznij”: pełne, wyszarzone tło zamiast przezroczystości (nic pod nim nie prześwituje) */
+.start-actions .btn:disabled, .start-actions .btn-primary:disabled {
+  opacity: 1; background: #1a2533; color: var(--text-3); border-color: var(--stroke-1); box-shadow: none;
+}
