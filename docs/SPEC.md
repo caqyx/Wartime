@@ -325,3 +325,8 @@ Fonty: systemowe sans + monospace dla liczb.
 - `G.trades [{a, b, since}]`; `proposeTrade(a, b)`, `makeTrade`, `cancelTrade`, `hasTrade`, `tradesOf(cc)`; `economy.income().trade`.
 - Nowe typy propozycji: `trade`, `aidRequest {enemy, amount}`. AI: `courtPlayer` (oferty i prezenty dla gracza, globalny odstęp `G.lastPlayerOffer`), `seekTrade` (umowy AI–AI), `manageResearch`.
 
+### Okręty artyleryjskie, ustawienia, agresywność
+- `fleet.gunships`; `naval.gunshipCost(n)`, `canBuyGunships(cc, prov, n)`, `buyGunships(cc, prov, n)`, `shellAll()` (w `turn.end` po ruchu flot), `shellProvince(fleet)`, `fleetMoves(cc)`. Zdarzenie `shelling`.
+- `G.settings { autoRejectPacts, aiAggression }` (`state.settings()`, opcje `newGame`); `diplomacy.aggression()` → 0…2; `ai.aggressionOf(cc, target)` → 0–100 (100 = wojna).
+- Nowe klucze technologii: recruitCost, coastDef, bombResist, bomberSpeed, planeCost, shellDamage, fleetSpeed, upkeep, devGrowth, income.
+

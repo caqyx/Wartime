@@ -23,6 +23,8 @@ python3 -m http.server 8000   # http://localhost:8000
 | Budowa w wielu prowincjach | przycisk zaznaczania przy zoomie / `B` / Shift(Ctrl)+klik → klikaj prowincje lub „Wszystkie moje / Nadmorskie / Przygraniczne” → „Buduj (N)” |
 | Nauka i technologie | przycisk „Nauka” / Menu / `N` → budżet badań (suwak) i drzewko technologii („Badaj”) |
 | Umowa handlowa | Dyplomacja → państwo → „Umowa handlowa” |
+| Ustawienia gry | Menu → „Ustawienia gry…”: agresywność AI (0–100) i automatyczne odrzucanie paktów; to samo na ekranie startowym, przełącznik paktów także w Dyplomacji |
+| Okręty artyleryjskie | panel prowincji z portem → „Okręty artyleryjskie” → „Kup okręty” → zaznacz flotę i wyślij ją (PPM) do wrogiej prowincji nadmorskiej |
 | Ranking państw | przycisk „Ranking” w górnym pasku / Menu → tabela sortowana kliknięciem nagłówka |
 | Nalot bombowców | panel własnej prowincji → „Lotnictwo” → zbuduj bombowce → „Cel nalotu” → kliknij prowincję wroga w zasięgu (pomarańczowy okrąg) |
 | Scal armie w prowincji | M (zwykle niepotrzebne — scalanie jest automatyczne) |
@@ -53,16 +55,19 @@ python3 -m http.server 8000   # http://localhost:8000
 - **Lotnictwo:** bombowce budowane w dowolnej własnej prowincji (dywizjon w bazie), zasięg 1800 km, 1100 km na turę. Pierwsza tura lotu kończy się 250 km przed celem, zrzut następuje w kolejnej — obrońca ma turę ostrzeżenia. Bombowce, które przelecą, obniżają rozwój prowincji (do −0,3 na nalot), przez 3 tury prowincja daje połowę dochodu, a każdy bombowiec ma 6% szansy zniszczyć poziom budynku. Opcja „Powtarzaj naloty”. Bombardować można tylko państwa, z którymi jesteś w wojnie.
 - **Działka przeciwlotnicze** (budynek, maks. 5): każdy poziom zestrzeliwuje bombowiec z szansą 12% (łącznie), działka sąsiednich prowincji pomagają w połowie, radar obrońcy nad celem daje +35%. Skuteczność ograniczona do 75% — część bombowców zawsze może przejść.
 - **Radar** (budynek, maks. 3): zasięg 350/550/750 km. Wrogie bombowce w zasięgu twoich radarów (i sojuszników) widać na mapie razem z celem, a pierwsze wykrycie trafia do dziennika i powiadomień. Bez radaru o nalocie dowiadujesz się dopiero po zrzucie.
-- **Nauka:** punkty nauki co turę = 10 × √(wydatek na badania w mld $) + 2 za każdy poziom uniwersytetu (budynek, maks. 5). Budżet na badania to 0–30% tygodniowego dochodu (domyślnie 5%), widoczny w wydatkach. Punkty wydajesz w drzewku technologii (16 technologii w 5 gałęziach):
-  - **Wojsko:** Nowoczesna piechota (+0,04 technologii), Logistyka (wyniszczenie −50%, +0,02), Broń precyzyjna (+0,06), Pole walki sieciocentryczne (+0,08) — technologia to mnożnik siły armii i floty.
-  - **Obrona:** Umocnienia (forty +40%), Zintegrowana OPL (działka +25%, limit 80%), Radary dalekiego zasięgu (+40% zasięgu).
-  - **Lotnictwo:** Bombowce strategiczne (+600 km), Bomby kierowane (naloty +50%), Stealth (wroga OPL −40%).
-  - **Marynarka:** Nowoczesne okręty (flota +20%), Okręty desantowe (15 tys. na eskadrę).
-  - **Gospodarka:** Automatyzacja (fabryki +20%), Cyfrowa administracja (administracja −20%), Gospodarka wiedzy (nauka +25%), Nowoczesna medycyna (rezerwy +30%).
+- **Nauka:** punkty nauki co turę = 10 × √(wydatek na badania w mld $) + 2 za każdy poziom uniwersytetu (budynek, maks. 5). Budżet na badania to 0–30% tygodniowego dochodu (domyślnie 5%), widoczny w wydatkach. Punkty wydajesz w drzewku technologii (28 technologii w 5 gałęziach):
+  - **Wojsko:** Nowoczesna piechota (+0,04 technologii), Logistyka (wyniszczenie −50%, +0,02), Broń precyzyjna (+0,06), Pole walki sieciocentryczne (+0,08), Szkolenie rezerw (rekrutacja −20%), Drony bojowe (+0,05) — technologia to mnożnik siły armii i floty.
+  - **Obrona:** Umocnienia (forty +40%), Zintegrowana OPL (działka +25%, limit 80%), Radary dalekiego zasięgu (+40% zasięgu), Obrona wybrzeża (ostrzał z morza −40%), Schrony (naloty −40%).
+  - **Lotnictwo:** Bombowce strategiczne (+600 km), Bomby kierowane (naloty +50%), Stealth (wroga OPL −40%), Tankowanie w powietrzu (bombowce +50% prędkości), Masowa produkcja samolotów (−30% kosztu).
+  - **Marynarka:** Nowoczesne okręty (flota +20%), Okręty desantowe (15 tys. na eskadrę), Artyleria okrętowa (ostrzał +50%), Pociski manewrujące (ostrzał kolejne +40%), Napęd turbinowy (4 węzły na turę).
+  - **Gospodarka:** Automatyzacja (fabryki +20%), Cyfrowa administracja (administracja −20%), Gospodarka wiedzy (nauka +25%), Nowoczesna medycyna (rezerwy +30%), Zielona energia (utrzymanie budynków −50%), Rozbudowa infrastruktury (rozwój 2× szybciej), Sieć 5G (dochód +5%).
   AI też prowadzi badania i buduje uniwersytety. W God Mode odkrycia są darmowe.
 - **Umowy handlowe:** +3% dochodu podatkowego dla obu stron (liczone do 6 umów), wymagają relacji ≥ 15, wygasają przy wojnie lub relacjach < −20.
 - **Dyplomacja AI wobec gracza:** państwa same proponują sojusz (wspólny wróg/zagrożenie, relacje ≥ 50), umowę handlową, pakt o nieagresji (sąsiedzi słabsi od ciebie) i proszą o pieniądze, gdy przegrywają wojnę (przyjęcie = przelew i lepsze relacje, odmowa = −6). Sąsiedzi i państwa zainteresowane współpracą wysyłają prezenty pieniężne dla poprawy relacji. Maks. jedna oferta na 4 tury, żeby nie zasypywać gracza.
 - **Ranking państw:** powierzchnia, prowincje, ludność, PKB, dochód, skarbiec, armia, flota, bombowce, siła militarna (wojsko × technologia + flota i lotnictwo), technologia, stabilność.
+- **Okręty artyleryjskie:** kupowane w portach (2,5 mld/szt., utrzymanie jak 2 eskadry), dołączają do floty w porcie. Flota stojąca przy prowincji państwa, z którym jesteś w wojnie, co turę ją ostrzeliwuje: zabija do 15% stacjonujących tam wojsk (1500 żołnierzy na okręt × technologia), obniża rozwój, przez 2 tury prowincja daje połowę dochodu, może uszkodzić fort. Forty odpowiadają ogniem (3% szansy zatopienia okrętu na poziom fortu). W bitwie morskiej okręt artyleryjski liczy się jak 1,5 eskadry. AI też je kupuje i ostrzeliwuje wybrzeża.
+- **Agresywność AI** (ustawienie 0–100, domyślnie 50): wpływa na szansę wypowiadania wojen, próg relacji i przewagę potrzebną do ataku, limit jednoczesnych wojen oraz gotowość do białego pokoju. 0 = brak nowych wojen AI. W Dyplomacji każde państwo ma pasek „Agresywność wobec ciebie” (relacje, przewaga militarna, niedawne wojny, ustrój, sąsiedztwo), a na liście państw groźne są oznaczone kropką.
+- **Automatyczne odrzucanie paktów:** propozycje paktów o nieagresji nie pojawiają się (wpis w dzienniku), AI przestaje je proponować.
 - **Flota:** eskadry poruszają się po grafie morskim, przewożą wojsko (1 eskadra = 10 tys.), bitwy morskie.
 - **God Mode:** nielimitowana kasa i rezerwy, natychmiastowe budowy, przejmowanie prowincji, dodawanie armii, wymuszanie pokoju/sojuszu, ustawianie relacji. Włączany na starcie lub w trakcie gry.
 - **Zapis:** 5 slotów + autosave co 5 tur, eksport/import JSON.
