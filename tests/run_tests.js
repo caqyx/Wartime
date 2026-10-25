@@ -661,6 +661,63 @@ test('handel i dyplomacja AI wobec gracza', function () {
   assert(gifts > 0, 'AI wysyła prezenty: ' + gifts);
 });
 
+test('okręty artyleryjskie: zakup w porcie, ostrzał armii i miasta, ogień fortów', function () {
+  freshGame({ player: 'AAA' });
+  var b = G().countries.BBB; b.treasury = 500;
+  eq(WT.naval.canBuyGunships('BBB', 9, 2).ok, false, 'bez portu nie można');
+  G().provinces[9].buildings.port = 1;
+  var f = WT.naval.buyGunships('BBB', 9, 6);
+  assert(f && f.gunships === 6, 'kupiono 6 okrętów');
+  assert(WT.economy.expenses('BBB').navy > 0, 'utrzymanie okrętów');
+  WT.diplomacy.startWar(['BBB'], ['CCC'], true);
+  var army = WT.state.createArmy('CCC', 14, 50000), p = G().provinces[14];
+  p.buildings.fort = 0;
+  var dev0 = p.dev;
+  assert(WT.naval.orderFleet(f.id, 14).ok, 'rejs do wrogiej prowincji');
+  WT.naval.moveFleets(); WT.naval.shellAll();
+  assert(army.size < 50000 && army.size >= 50000 * 0.85 - 1, 'armia osłabiona (maks. 15%): ' + army.size);
+  assert(p.dev < dev0 && p.bombed > 0, 'miasto osłabione, dochód zakłócony');
+  // forty odpowiadają ogniem: przy wysokim forcie część okrętów idzie na dno
+  p.buildings.fort = 5;
+  var sunk = 0;
+  for (var i = 0; i < 30 && G().fleets[f.id]; i++) { var r = WT.naval.shellProvince(f); sunk += r.sunk; f.gunships = Math.max(f.gunships, 6); p.buildings.fort = 5; }
+  assert(sunk > 0, 'forty zatapiają okręty: ' + sunk);
+});
+
+test('ustawienia: auto-odrzucanie paktów i agresywność AI', function () {
+  freshGame({ player: 'AAA', autoRejectPacts: true, aiAggression: 0 });
+  eq(WT.state.settings().autoRejectPacts, true, 'ustawienie zapisane w stanie');
+  var res = WT.diplomacy.addProposal('BBB', 'AAA', 'pact', {});
+  assert(res && res.autoRejected, 'pakt odrzucony automatycznie');
+  eq(G().proposals.filter(function (p) { return p.type === 'pact'; }).length, 0, 'brak okna propozycji');
+  assert(WT.diplomacy.addProposal('BBB', 'AAA', 'trade', {}), 'inne propozycje dalej trafiają do gracza');
+  // agresywność 0: AI nie wypowiada nowych wojen
+  ['AAA', 'BBB', 'CCC'].forEach(function (a) { ['AAA', 'BBB', 'CCC'].forEach(function (b) { if (a !== b) setRel(a, b, -100); }); });
+  for (var i = 0; i < 60; i++) WT.turn.end();
+  eq(G().wars.length, 0, 'agresywność 0: brak wojen');
+  G().settings.aiAggression = 100;
+  assert(WT.ai.aggressionOf('BBB', 'AAA') > 0 && WT.ai.aggressionOf('BBB', 'AAA') <= 100, 'wskaźnik agresywności');
+  var hi = WT.ai.aggressionOf('BBB', 'AAA');
+  G().settings.aiAggression = 10;
+  assert(WT.ai.aggressionOf('BBB', 'AAA') < hi, 'wskaźnik zależy od ustawienia');
+  var g = JSON.parse(JSON.stringify(G())); delete g.settings;
+  WT.save.importJSON(JSON.stringify(g));
+  eq(WT.state.settings().aiAggression, 50, 'stary zapis: domyślne ustawienia');
+});
+
+test('nowe technologie: efekty', function () {
+  freshGame({ god: true });
+  var cost0 = WT.economy.recruitCost('AAA', 0, 10);
+  WT.tech.research('AAA', 'mil1'); WT.tech.research('AAA', 'mil5');
+  assert(WT.economy.recruitCost('AAA', 0, 10) < cost0, 'szkolenie rezerw: tańsza rekrutacja');
+  var pc = WT.air.planeCost('AAA', 10);
+  WT.tech.research('AAA', 'air1'); WT.tech.research('AAA', 'air5'); WT.tech.research('AAA', 'air4');
+  assert(WT.air.planeCost('AAA', 10) < pc && WT.air.speedKm('AAA') > WT.air.SPEED_KM, 'tańsze i szybsze bombowce');
+  WT.tech.research('AAA', 'nav1'); WT.tech.research('AAA', 'nav4');
+  eq(WT.naval.fleetMoves('AAA'), WT.naval.FLEET_MOVES + 1, 'napęd turbinowy');
+  eq(WT.tech.TREE.length, 28, '28 technologii w drzewku');
+});
+
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {
   freshGame({ player: 'AAA', god: true });
   var c = G().countries.AAA, t0 = c.treasury;

@@ -8,6 +8,7 @@ WT.economy = (function () {
   var ADMIN_RATE = 0.08;              // stałe wydatki cywilne (% PKB/rok) — podatek < 8% daje deficyt
   var ARMY_UPKEEP_PER_K = 0.0012;     // mld/tydz. za 1000 żołnierzy (× skala kosztów)
   var NAVY_UPKEEP = 0.02;             // mld/tydz. za eskadrę (× skala kosztów)
+  var GUNSHIP_UPKEEP_SHARE = 2;       // okręt artyleryjski kosztuje w utrzymaniu jak 2 eskadry
   var BUILDING_UPKEEP = 0.003;        // mld/tydz. za poziom budynku
   var RECRUIT_COST_PER_K = 0.025;     // mld za 1000 żołnierzy (× skala kosztów)
   var SHIP_COST = 1.2;                // mld za eskadrę
@@ -68,11 +69,11 @@ WT.economy = (function () {
   function income(cc) {
     var c = S.country(cc), res = { tax: 0, factories: 0, occupation: 0, aid: 0, total: 0 };
     if (!c) return res;
-    var mod = stabilityMod(c), own = S.provincesOf(cc), ctrl = S.controlledBy(cc), i;
+    var mod = stabilityMod(c), incomeMod = techMod(cc, 'income'), own = S.provincesOf(cc), ctrl = S.controlledBy(cc), i;
     for (i = 0; i < own.length; i++) {
       var p = G().provinces[own[i]];
       if (p.ctrl !== cc) continue;     // okupowana prowincja nic nie daje właścicielowi
-      var base = provGdp(own[i]) * c.taxRate / WEEKS * mod * (p.bombed > 0 ? BOMBED_INCOME : 1);
+      var base = provGdp(own[i]) * c.taxRate / WEEKS * mod * incomeMod * (p.bombed > 0 ? BOMBED_INCOME : 1);
       res.tax += base;
       res.factories += base * (FACTORY_BONUS * techMod(cc, 'factory') * p.buildings.factory + PORT_BONUS * p.buildings.port);
     }
@@ -114,7 +115,7 @@ WT.economy = (function () {
     return S.armiesOf(cc).reduce(function (s, a) { return s + a.size; }, 0);
   }
   function navyShips(cc) {
-    return S.fleetsOf(cc).reduce(function (s, f) { return s + f.ships; }, 0);
+    return S.fleetsOf(cc).reduce(function (s, f) { return s + f.ships + GUNSHIP_UPKEEP_SHARE * (f.gunships || 0); }, 0);
   }
   function buildingLevels(cc) {
     return S.provincesOf(cc).reduce(function (s, id) {
@@ -128,7 +129,7 @@ WT.economy = (function () {
     var res = {
       army: armySoldiers(cc) / 1000 * ARMY_UPKEEP_PER_K * scale,
       navy: navyShips(cc) * NAVY_UPKEEP * scale,
-      buildings: buildingLevels(cc) * BUILDING_UPKEEP,
+      buildings: buildingLevels(cc) * BUILDING_UPKEEP * techMod(cc, 'upkeep'),
       admin: countryGdp(cc) * ADMIN_RATE / WEEKS * techMod(cc, 'admin'),
       air: WT.air ? WT.air.upkeep(cc) : 0,
       research: WT.tech ? WT.tech.spending(cc) : 0
@@ -232,7 +233,7 @@ WT.economy = (function () {
 
   function recruitCost(cc, provId, sizeK) {
     var barracks = G().provinces[provId] ? G().provinces[provId].buildings.barracks : 0;
-    return U.round(sizeK * RECRUIT_COST_PER_K * costScale(cc) * (1 - 0.1 * barracks), 3);
+    return U.round(sizeK * RECRUIT_COST_PER_K * costScale(cc) * (1 - 0.1 * barracks) * techMod(cc, 'recruitCost'), 3);
   }
 
   function canRecruit(cc, provId, sizeK) {
@@ -335,7 +336,7 @@ WT.economy = (function () {
       var p = G().provinces[id];
       if (p.ctrl !== cc) return;
       var g = atPeace ? 0.0006 : 0.0002;
-      p.dev = Math.min(3, p.dev + g * (1 + 0.1 * p.buildings.factory));
+      p.dev = Math.min(3, p.dev + g * (1 + 0.1 * p.buildings.factory) * techMod(cc, 'devGrowth'));
     });
   }
 
@@ -352,7 +353,7 @@ WT.economy = (function () {
       a.size = Math.floor(a.size * 0.9);
       if (a.size < 500) S.removeArmy(a.id);
     });
-    if (!armies.length) S.fleetsOf(c.cc).forEach(function (f) { f.ships = Math.max(0, f.ships - Math.max(1, f.ships * 0.1)); if (f.ships < 0.5) S.removeFleet(f.id); });
+    if (!armies.length) S.fleetsOf(c.cc).forEach(function (f) { f.ships = Math.max(0, f.ships - Math.max(1, f.ships * 0.1)); if (f.gunships) f.gunships = Math.max(0, f.gunships - 1); if (f.ships < 0.5 && !f.gunships) S.removeFleet(f.id); });
     c.stability = Math.max(0, c.stability - 3);
     if (c.cc === G().player) S.addLog('Bankructwo! Skarb pusty — demobilizacja 10% wojska, spadek stabilności.', c.cc);
   }

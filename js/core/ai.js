@@ -50,9 +50,9 @@ WT.ai = (function () {
       soldiers: soldiersByCountry(),
       neighbors: {},
       newWars: 0,
-      maxNewWars: 1 + Math.floor(turn() / 40),
+      maxNewWars: aggr() <= 0 ? 0 : Math.max(1, Math.round((1 + Math.floor(turn() / 40)) * aggr())),
       aiWars: G().wars.filter(function (w) { return w.attackers[0] !== G().player; }).length,
-      maxAiWars: Math.min(14, 3 + Math.floor(turn() / 12)),
+      maxAiWars: Math.round(Math.min(14, 3 + Math.floor(turn() / 12)) * Math.max(0.2, aggr())),
       playerOffers: 0, playerGifts: 0
     };
   }
@@ -241,7 +241,7 @@ WT.ai = (function () {
     }
     if (!D().hasTrade(cc, me) && rel >= 20 && U.chance(0.35)) return { type: 'trade', terms: {} };
     var neighbors = S.countryNeighbors(cc).indexOf(me) >= 0;
-    if (neighbors && !D().hasPact(cc, me) && rel >= -15 && rel < 45 && Mil().power(me) > Mil().power(cc) && U.chance(0.3)) {
+    if (neighbors && !S.settings().autoRejectPacts && !D().hasPact(cc, me) && rel >= -15 && rel < 45 && Mil().power(me) > Mil().power(cc) && U.chance(0.3)) {
       return { type: 'pact', terms: {} };
     }
     return null;
@@ -432,16 +432,37 @@ WT.ai = (function () {
   }
 
   function pickWarTarget(cc, ctx) {
-    var mine = Mil().power(cc), nbs = neighborsOf(ctx, cc);
+    var k = aggr(), mine = Mil().power(cc), nbs = neighborsOf(ctx, cc);
+    if (k <= 0) return null;
+    // agresywność: próg relacji (−25 standard, −5 przy maks.), wymagana przewaga i szansa na wojnę
+    var relLimit = -25 + 20 * (k - 1), ratio = WAR_POWER_RATIO / Math.sqrt(Math.max(0.25, k));
     for (var i = 0; i < nbs.length; i++) {
       var t = nbs[i], rel = D().relation(cc, t);
-      if (rel > -25 || !S.country(t).alive || D().checkDeclareWar(cc, t)) continue;
+      if (rel > relLimit || !S.country(t).alive || D().checkDeclareWar(cc, t)) continue;
       if (t === G().player && turn() < PLAYER_GRACE_TURNS) continue;
-      if (mine < WAR_POWER_RATIO * coalitionPower(t, cc)) continue;
-      var p = WAR_CHANCE * WAR_CHECK_EVERY * (1 + (-rel - 25) / 50) * (1 + turn() / 150);
+      if (mine < ratio * coalitionPower(t, cc)) continue;
+      var p = WAR_CHANCE * WAR_CHECK_EVERY * (1 + (-rel - 25) / 50) * (1 + turn() / 150) * Math.pow(k, 1.5);
       if (U.chance(p)) return t;
     }
     return null;
+  }
+
+  function aggr() { return D().aggression(); }
+
+  /**
+   * Wskaźnik agresywności państwa wobec `target` (0–100): wrogie relacje, przewaga militarna,
+   * niedawne wojny i trwające walki, skalowane ustawieniem agresywności AI.
+   */
+  function aggressionOf(cc, target) {
+    if (!S.country(cc) || !S.country(cc).alive || cc === target) return 0;
+    if (D().atWar(cc, target)) return 100;
+    var c = S.country(cc), rel = D().relation(cc, target);
+    var hostility = U.clamp(50 - rel, 0, 150) / 150 * 50;                       // do 50 pkt za relacje
+    var edge = U.clamp(Mil().power(cc) / Math.max(1, Mil().power(target)) / 2, 0, 1) * 20;
+    var warlike = (turn() - (c.ai.lastWar != null ? c.ai.lastWar : -99) < 26 ? 15 : 0) + (D().enemiesOf(cc).length ? 10 : 0);
+    var regime = c.ideology === 'autorytaryzm' || c.ideology === 'teokracja' ? 5 : 0;
+    var neighbor = S.countryNeighbors(cc).indexOf(target) >= 0 ? 1 : 0.7;
+    return Math.round(U.clamp((hostility + edge + warlike + regime) * neighbor * (0.5 + 0.5 * aggr()), 0, 99));
   }
 
   /** Siła celu wraz z sojusznikami, którzy zapewne przyjdą mu z pomocą. */
@@ -656,6 +677,7 @@ WT.ai = (function () {
 
   function manageFleets(cc, ctx, i) {
     if (!staggered(i, 3) || !D().enemiesOf(cc).length) return;
+    manageGunships(cc);
     var fleets = S.fleetsOf(cc).filter(function (f) { return !f.path.length && !f.cargo.length; });
     if (!fleets.length) return;
     var hasLandFront = frontierProvinces(cc).length > 0;
@@ -664,6 +686,46 @@ WT.ai = (function () {
     var army = invasionArmyAt(cc, fleet.prov);
     if (army) launchInvasion(cc, army, fleet);
     else gatherFleetToArmy(cc, fleet);
+  }
+
+  // ---------- Okręty artyleryjskie: zakup w stolicy/porcie i ostrzał najbliższej wrogiej prowincji nadmorskiej ----------
+
+  var GUNSHIP_MIN_NAVY = 6, GUNSHIP_TARGET_SHARE = 0.25, GUNSHIP_MAX_HOPS = 8;
+
+  function manageGunships(cc) {
+    var c = S.country(cc), navy = S.fleetsOf(cc).reduce(function (s, f) { return s + f.ships; }, 0);
+    var guns = S.fleetsOf(cc).reduce(function (s, f) { return s + (f.gunships || 0); }, 0);
+    if (navy >= GUNSHIP_MIN_NAVY && guns < navy * GUNSHIP_TARGET_SHARE) buyGunshipsAI(cc, c);
+    S.fleetsOf(cc).forEach(function (f) {
+      if (!(f.gunships > 0) || f.path.length || f.cargo.length) return;
+      if (D().atWar(cc, G().provinces[f.prov].ctrl)) return;   // już ostrzeliwuje
+      var target = shellingTarget(cc, f);
+      if (target >= 0) N().orderFleet(f.id, target);
+    });
+  }
+
+  function buyGunshipsAI(cc, c) {
+    var port = S.provincesOf(cc).filter(function (id) { return N().canBuyGunships(cc, id, 2).ok; })[0];
+    if (port == null) return;
+    if (c.treasury - N().gunshipCost(2) > 2 * reserveFor(c)) N().buyGunships(cc, port, 2);
+  }
+
+  /** Najbliższa (po morzu) wroga prowincja nadmorska bez silniejszej floty wroga. */
+  function shellingTarget(cc, f) {
+    var cands = [];
+    D().enemiesOf(cc).forEach(function (e) {
+      S.controlledBy(e).forEach(function (id) { if (N().isPort(id)) cands.push({ prov: id, d: S.dist(f.prov, id) }); });
+    });
+    cands.sort(function (a, b) { return a.d - b.d; });
+    var mine = f.ships + 1.5 * f.gunships;
+    for (var k = 0; k < cands.length && k < 6; k++) {
+      var id = cands[k].prov, path = N().seaPath(f.prov, id);
+      if (!path || path.length > GUNSHIP_MAX_HOPS) continue;
+      var enemyShips = S.fleetsIn(id).filter(function (o) { return D().atWar(o.owner, cc); })
+        .reduce(function (s, o) { return s + o.ships + 1.5 * (o.gunships || 0); }, 0);
+      if (enemyShips <= mine) return id;
+    }
+    return -1;
   }
 
   function invasionArmyAt(cc, provId) {
@@ -702,7 +764,7 @@ WT.ai = (function () {
     if (best && best.prov !== fleet.prov) N().orderFleet(fleet.id, best.prov);
   }
 
-  return { runAll: runAll };
+  return { runAll: runAll, aggressionOf: aggressionOf };
 })();
 
 if (typeof module !== 'undefined') module.exports = WT.ai;

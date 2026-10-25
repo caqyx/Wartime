@@ -24,6 +24,7 @@
     godCC: null,
     godArmyK: 50,
     planesN: 5,             // suwak budowy bombowców
+    gunN: 2,                // suwak zakupu okrętów artyleryjskich
     airRepeat: false,       // ponawianie nalotów
     airSel: null,           // id dywizjonu w trybie wyboru celu nalotu
     rankSort: null,
@@ -178,6 +179,7 @@
     plane: '<path d="M21 15.5l-8-4.5V5a1.5 1.5 0 0 0-3 0v6l-8 4.5V17l8-2.5v4l-2.5 1.5V21l4-1 4 1v-1l-2.5-1.5v-4l8 2.5z"/>',
     aa: '<path d="M4 20.5h16M7 20.5l2-6h6l2 6"/><path d="M12 14.5L18 5"/><path d="M17 8.5l3-1.5M15.5 4.5l1 3"/>',
     radar: '<path d="M4.5 19.5a10 10 0 0 1 0-15"/><path d="M8 16a5.5 5.5 0 0 1 0-8"/><circle cx="12" cy="12" r="1.6"/><path d="M12 12l8.5-5"/><path d="M12 13.5v7"/>',
+    sliders: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
     flask: '<path d="M9.5 3.5h5M10.5 3.5v5.5L5 18.5A1.6 1.6 0 0 0 6.4 21h11.2a1.6 1.6 0 0 0 1.4-2.5L13.5 9V3.5"/><path d="M7.5 14.5h9"/>',
     university: '<path d="M3 9.5L12 5l9 4.5-9 4.5z"/><path d="M6.5 11.3V16c0 1.5 2.5 3 5.5 3s5.5-1.5 5.5-3v-4.7"/><path d="M21 9.5V15"/>',
     trade: '<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>',
@@ -236,7 +238,7 @@
     if (menuBtn && !menuBtn.querySelector('.ico')) { menuBtn.innerHTML = icon('menu'); menuBtn.classList.add('btn-icon'); menuBtn.setAttribute('aria-label', 'Menu'); }
     const endLabel = document.querySelector('#btn-endturn .btn-label'); if (endLabel) endLabel.classList.remove('btn-label');
     const god = $('tb-god'); if (god && !god.querySelector('.ico')) god.innerHTML = icon('sparkles') + 'GOD';
-    const menuIcons = { science: 'flask', ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout' };
+    const menuIcons = { settings: 'sliders', science: 'flask', ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout' };
     document.querySelectorAll('#menu .menu-item').forEach((b) => {
       if (b.querySelector('.ico')) return;
       const txt = document.createElement('span'); txt.textContent = b.textContent; b.textContent = '';
@@ -256,6 +258,9 @@
       const l1 = optGod.closest('label'), l2 = optWars && optWars.closest('label');
       l1.parentNode.insertBefore(box, l1);
       box.appendChild(l1); if (l2) box.appendChild(l2);
+      const l3 = $('opt-nopacts') && $('opt-nopacts').closest('label'), ag = $('opt-aggr-row');
+      if (l3) { box.appendChild(l3); l3.querySelector('span').innerHTML = 'Odrzucaj pakty automatycznie<small>Propozycje paktów o nieagresji nie będą się pojawiać</small>'; }
+      if (ag) box.appendChild(ag);
       l1.querySelector('span').innerHTML = 'God Mode<small>Nielimitowana kasa i rezerwy, narzędzia edycji</small>';
       if (l2) l2.querySelector('span').innerHTML = 'Trwające konflikty 2026<small>Rosja–Ukraina, Izrael–Palestyna</small>';
     }
@@ -411,13 +416,17 @@
   }
   function startGame() {
     if (!S.startCC) return;
-    const opts = { player: S.startCC, god: $('opt-god').checked, startWars: $('opt-wars').checked, seed: Math.floor(Math.random() * 1e9) };
+    const opts = { player: S.startCC, god: $('opt-god').checked, startWars: $('opt-wars').checked, seed: Math.floor(Math.random() * 1e9),
+      autoRejectPacts: $('opt-nopacts').checked, aiAggression: +$('opt-aggr').value };
     const g = call('state.newGame', [opts], null);
     if (!g && !G()) { toast('Nie udało się utworzyć gry (brak WT.state.newGame)', 'bad'); return; }
     if (g && !WT.G) WT.G = g;
     enterGame(true);
   }
+  function aggressionLabel(v) { return v <= 0 ? 'Pokojowa (bez nowych wojen)' : v < 35 ? 'Niska' : v <= 65 ? 'Standardowa' : v < 90 ? 'Wysoka' : 'Bardzo wysoka'; }
   function bindStart() {
+    const ag = $('opt-aggr');
+    ag.addEventListener('input', () => { $('opt-aggr-val').textContent = aggressionLabel(+ag.value); });
     $('start-search').addEventListener('input', renderStartList);
     $('start-results').addEventListener('click', (e) => { const it = e.target.closest('[data-cc]'); if (it) selectStartCountry(it.dataset.cc, true); });
     $('btn-start').addEventListener('click', startGame);
@@ -510,6 +519,7 @@
     else if (act === 'god-toggle') setGodMode(!isGod());
     else if (act === 'ranking') openRanking();
     else if (act === 'science') openScience();
+    else if (act === 'settings') openSettings();
     else if (act === 'help') openHelp();
     else if (act === 'exit') confirmModal('Wyjście', 'Wrócić do menu głównego? Niezapisany postęp zostanie utracony (autozapis co 5 tur).', 'Wyjdź', () => { WT.G = null; showStart(); }, true);
   }
@@ -766,7 +776,7 @@
     let html = '<div class="panel-head">' + swatch(owner) + '<h2>' + esc(ps.name) + '</h2><button class="close" data-act="close" title="Zamknij (Esc)" aria-label="Zamknij">' + icon('x') + '</button></div><div class="panel-body">';
     html += provinceInfoSection(ps, pd, owner, ctrl);
     html += provinceUnitsSection(id);
-    if (mine) html += buildingsSection(id, pd) + recruitSection(id, ctrl) + shipsSection(id, ps, pd) + airSection(id, ctrl);
+    if (mine) html += buildingsSection(id, pd) + recruitSection(id, ctrl) + shipsSection(id, ps, pd) + gunshipSection(id, ps, pd) + airSection(id, ctrl);
     else html += '<div class="section"><button class="btn" data-act="diplo" style="width:100%;justify-content:center">Dyplomacja z: ' + esc(countryName(owner)) + '</button></div>';
     html += '</div>';
     const panel = $('province-panel');
@@ -811,7 +821,7 @@
     });
     fleets.forEach((f) => {
       const sel = S.sel && S.sel.type === 'fleet' && S.sel.id === f.id;
-      h += '<div class="army-row' + (sel ? ' sel' : '') + '" data-fleet="' + esc(f.id) + '"><span class="army-chip" style="background:#0b2034;color:#cfe8ff;border-color:' + countryColor(f.owner) + '">' + icon('ship') + f.ships +
+      h += '<div class="army-row' + (sel ? ' sel' : '') + '" data-fleet="' + esc(f.id) + '"><span class="army-chip" style="background:#0b2034;color:#cfe8ff;border-color:' + countryColor(f.owner) + '">' + icon('ship') + f.ships + (f.gunships ? ' · ' + icon('aa') + f.gunships : '') +
         '</span><span>Flota: ' + esc(countryName(f.owner)) + '</span><span class="faint" style="margin-left:auto">' + ((f.cargo || []).length ? 'ładunek: ' + f.cargo.length : (f.path && f.path.length ? 'w rejsie' : 'w porcie')) + '</span></div>';
     });
     const selA = S.sel && S.sel.type === 'army' ? unitObj(S.sel) : null;
@@ -880,6 +890,33 @@
       '<div class="reason" id="ship-reason">' + (can.ok ? '' : esc(can.reason || '')) + '</div>' +
       (hasPort ? '' : '<div class="hint">Zbuduj Port w tej prowincji, aby budować okręty.</div>') + '</div>';
   }
+  function gunshipSection(id, ps, pd) {
+    if (!ps.coastal || !WT.naval.buyGunships) return '';
+    const can = WT.naval.canBuyGunships(me(), id, S.gunN);
+    return '<div class="section"><div class="section-title">Okręty artyleryjskie</div>' +
+      '<div class="slider-row"><input type="range" id="gun-n" min="1" max="10" value="' + S.gunN + '"><span class="num" id="gun-n-val">' + S.gunN + ' okr.</span></div>' +
+      '<div class="slider-row" style="margin-top:6px"><span class="dim">Koszt: <span class="num" id="gun-cost">' + gunCostText(S.gunN) + '</span></span>' +
+      '<button class="btn btn-sm btn-ok" id="gun-go" style="margin-left:auto"' + (can.ok ? '' : ' disabled') + '>Kup okręty</button></div>' +
+      '<div class="reason" id="gun-reason">' + (can.ok ? '' : esc(can.reason || '')) + '</div>' +
+      '<div class="hint">Flota z okrętami artyleryjskimi wysłana do prowincji wroga (nadmorskiej) co turę ją ostrzeliwuje: zabija do 15% wojsk, obniża rozwój i dochód, uszkadza forty. Forty odpowiadają ogniem.</div></div>';
+  }
+  function gunCostText(n) { return isGod() ? '0 (God Mode)' : fmtNum(WT.naval.gunshipCost(n), 1) + ' mld $'; }
+  function bindGunships(id) {
+    const s = $('gun-n'); if (!s) return;
+    s.addEventListener('input', () => {
+      S.gunN = +s.value;
+      $('gun-n-val').textContent = S.gunN + ' okr.';
+      $('gun-cost').textContent = gunCostText(S.gunN);
+      const can = WT.naval.canBuyGunships(me(), id, S.gunN);
+      $('gun-go').disabled = !can.ok; $('gun-reason').textContent = can.ok ? '' : (can.reason || '');
+    });
+    $('gun-go').addEventListener('click', () => {
+      const f = WT.naval.buyGunships(me(), id, S.gunN);
+      if (f) toast('Kupiono ' + S.gunN + ' okr. artyleryjskich — zaznacz flotę i wyślij ją do wrogiej prowincji nadmorskiej', 'ok', 3500);
+      else toast(WT.naval.canBuyGunships(me(), id, S.gunN).reason || 'Nie można kupić', 'bad');
+      refreshAll();
+    });
+  }
   function shipsCheck(id, hasPort) {
     if (has('economy.canBuildShips')) return call('economy.canBuildShips', [me(), id, S.shipsN], { ok: hasPort }) || { ok: false };
     return hasPort ? { ok: true } : { ok: false, reason: 'Wymagany port.' };
@@ -896,6 +933,7 @@
     }));
     bindRecruit(id);
     bindShips(id);
+    bindGunships(id);
     bindAir(id);
   }
   function bindRecruit(id) {
@@ -985,6 +1023,7 @@
     const panel = $('diplo-panel');
     const focused = document.activeElement && document.activeElement.id === 'dip-search';
     let html = '<div class="panel-head"><h2>Dyplomacja</h2><button class="close" data-act="close" title="Zamknij (Esc)" aria-label="Zamknij">' + icon('x') + '</button></div><div class="panel-body">';
+    html += '<div class="section dip-settings"><label class="check"><input type="checkbox" id="dip-nopacts"' + (settingsOf().autoRejectPacts ? ' checked' : '') + '> <span>Automatycznie odrzucaj pakty o nieagresji</span></label></div>';
     html += '<div class="section"><input type="search" id="dip-search" placeholder="Szukaj państwa…" value="' + esc(S.diploQuery) + '" style="width:100%"></div>';
     html += '<div class="section"><div class="country-list" id="dip-list" style="max-height:200px">' + diploListHtml() + '</div></div>';
     if (S.diploCC && liveCountry(S.diploCC)) html += diploDetailHtml(S.diploCC);
@@ -1005,7 +1044,7 @@
     return list.map((cc) => {
       const r = Math.round(rel(p, cc));
       return '<div class="country-item' + (cc === S.diploCC ? ' sel' : '') + '" data-cc="' + esc(cc) + '">' + swatch(cc) + '<span class="name">' + esc(countryName(cc)) + '</span>' +
-        statusTags(cc) + '<span class="relmini" title="Relacje: ' + r + '"><i class="' + (r >= 0 ? 'up' : 'down') + '" style="width:' + (Math.min(100, Math.abs(r)) / 2) + '%"></i></span>' +
+        statusTags(cc) + threatDot(cc) + '<span class="relmini" title="Relacje: ' + r + '"><i class="' + (r >= 0 ? 'up' : 'down') + '" style="width:' + (Math.min(100, Math.abs(r)) / 2) + '%"></i></span>' +
         '<span class="rel ' + relClass(r) + '">' + (r > 0 ? '+' : '') + r + '</span></div>';
     }).join('') || '<div class="country-item faint">Brak wyników</div>';
   }
@@ -1017,6 +1056,7 @@
     h += '<div class="kv"><span class="k">Relacje</span><span class="v ' + relClass(r) + '">' + (r > 0 ? '+' : '') + r + '</span></div>';
     h += '<div class="relbar"><i style="left:' + ((r + 100) / 2) + '%"></i></div>';
     h += '<div style="margin:6px 0">' + (statusTags(cc) || '<span class="tag">Neutralny</span>') + '</div>';
+    h += threatBarHtml(cc);
     h += '<div class="kv">' +
       '<span class="k">Ustrój</span><span class="v txt">' + esc(d.gov || '—') + (c.ideology ? ' · ' + esc(IDEOLOGY_PL[c.ideology] || c.ideology) : '') + '</span>' +
       '<span class="k">PKB (2026)</span><span class="v">' + (d.gdp != null ? fmtInt(d.gdp) + ' mld $' : '—') + '</span>' +
@@ -1070,6 +1110,7 @@
     $('dip-list').addEventListener('click', (e) => { const it = e.target.closest('[data-cc]'); if (it) { S.diploCC = it.dataset.cc; renderDiplomacy(); } });
     panel.querySelectorAll('[data-dip]').forEach((b) => b.addEventListener('click', () => diploAction(b.dataset.dip, S.diploCC)));
     bindAidSection(S.diploCC);
+    $('dip-nopacts').addEventListener('change', (e) => { settingsOf().autoRejectPacts = e.target.checked; toast(e.target.checked ? 'Pakty o nieagresji będą odrzucane automatycznie' : 'Propozycje paktów znów trafią do ciebie', '', 2200); });
   }
   function diploAction(act, cc) {
     const p = me(), name = countryName(cc);
@@ -1604,6 +1645,37 @@
     const p = id >= 0 ? provStatic(id) : null;
     R().view.radarRing = lvl ? { x: p.cx, y: p.cy, r: WT.air.radarRangeKm(lvl, me()) / (MAP().kmPerUnit || 4) } : null;
     R().requestDraw();
+  }
+
+  // ===========================================================================
+  // Ustawienia gry i agresywność
+  // ===========================================================================
+  function settingsOf() { return call('state.settings', [], null) || (G().settings = G().settings || { autoRejectPacts: false, aiAggression: 50 }); }
+  function openSettings() {
+    if (!S.inGame || !G()) return;
+    const st = settingsOf();
+    const body = '<label class="check"><input type="checkbox" id="set-nopacts"' + (st.autoRejectPacts ? ' checked' : '') + '> <span>Automatycznie odrzucaj pakty o nieagresji</span></label>' +
+      '<div class="aggr-row" style="margin-top:14px"><span class="aggr-lbl">Agresywność AI</span><input type="range" id="set-aggr" min="0" max="100" step="5" value="' + st.aiAggression + '">' +
+      '<span class="aggr-val" id="set-aggr-val">' + aggressionLabel(st.aiAggression) + '</span></div>' +
+      '<div class="hint" style="margin-top:8px">Agresywność wpływa na to, jak często i przy jak słabych relacjach AI wypowiada wojny, jakiej przewagi potrzebuje do ataku i jak łatwo zgadza się na biały pokój. 0 = brak nowych wojen AI.</div>';
+    openModal({ title: icon('sliders') + ' Ustawienia gry', body, onOpen: (el) => {
+      el.querySelector('#set-nopacts').addEventListener('change', (e) => { settingsOf().autoRejectPacts = e.target.checked; });
+      const ag = el.querySelector('#set-aggr');
+      ag.addEventListener('input', () => { el.querySelector('#set-aggr-val').textContent = aggressionLabel(+ag.value); });
+      ag.addEventListener('change', () => { settingsOf().aiAggression = +ag.value; refreshAll(); });
+      syncRangesIn(el);
+    } });
+  }
+  UI.openSettings = openSettings;
+  function threatLevel(v) { return v >= 100 ? ['W wojnie', 'war'] : v >= 70 ? ['Bardzo wysoka', 'war'] : v >= 45 ? ['Wysoka', 'high'] : v >= 25 ? ['Umiarkowana', 'mid'] : ['Niska', 'low']; }
+  function threatBarHtml(cc) {
+    const v = WT.ai && WT.ai.aggressionOf ? WT.ai.aggressionOf(cc, me()) : 0, lv = threatLevel(v);
+    return '<div class="threat"><div class="threat-head"><span class="k">Agresywność wobec ciebie</span><span class="threat-lbl ' + lv[1] + '">' + lv[0] + ' · ' + Math.min(100, v) + '</span></div>' +
+      '<div class="threat-bar"><i class="' + lv[1] + '" style="width:' + Math.min(100, v) + '%"></i></div></div>';
+  }
+  function threatDot(cc) {
+    const v = WT.ai && WT.ai.aggressionOf ? WT.ai.aggressionOf(cc, me()) : 0, lv = threatLevel(v);
+    return v >= 45 && v < 100 ? '<span class="threat-dot ' + lv[1] + '" title="Agresywność: ' + lv[0] + '"></span>' : '';
   }
 
   // ===========================================================================

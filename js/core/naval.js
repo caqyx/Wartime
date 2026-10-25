@@ -6,6 +6,13 @@ WT.naval = (function () {
 
   var FLEET_MOVES = 3;               // węzły morskie na turę
   var SHIP_CAPACITY = 10000;         // żołnierzy na eskadrę
+  // Okręty artyleryjskie (f.gunships): kupowane w porcie, ostrzeliwują wrogą prowincję, w której stoi flota.
+  var GUNSHIP_COST = 2.5;            // mld za okręt
+  var GUNSHIP_BATTLE = 1.5;          // siła w bitwie morskiej względem eskadry transportowej
+  var SHELL_SOLDIERS = 1500;         // żołnierzy na okręt na turę (× technologia)
+  var SHELL_MAX_ARMY = 0.15;         // maks. strata armii w prowincji na turę
+  var SHELL_DEV = 0.008, SHELL_MAX_DEV = 0.12, SHELL_FORT = 0.04;
+  var FORT_RETURN_FIRE = 0.03;       // szansa zatopienia okrętu na poziom fortu
 
   function G() { return WT.G; }
   function name(cc) { return S.country(cc).name; }
@@ -48,7 +55,8 @@ WT.naval = (function () {
     return path.reverse();
   }
 
-  function seaTurns(path) { return Math.ceil(path.length / FLEET_MOVES); }
+  function fleetMoves(cc) { return FLEET_MOVES + (WT.tech && cc ? WT.tech.add(cc, 'fleetSpeed') : 0); }
+  function seaTurns(path, cc) { return Math.ceil(path.length / fleetMoves(cc)); }
 
   // =====================================================================
   // Rozkazy flot
@@ -62,7 +70,8 @@ WT.naval = (function () {
     if (!path) return { ok: false, reason: 'Brak drogi morskiej do celu.' };
     f.path = path;
     f.landAt = null;
-    return { ok: true, reason: 'Rejs: ' + path.length + ' węzłów, ok. ' + seaTurns(path) + ' tur.', turns: seaTurns(path) };
+    var t = seaTurns(path, f.owner);
+    return { ok: true, reason: 'Rejs: ' + path.length + ' węzłów, ok. ' + t + ' tur.' + (f.gunships ? ' Okręty artyleryjskie ostrzelają wrogą prowincję u celu.' : ''), turns: t };
   }
 
   function cargoSize(f) {
@@ -130,7 +139,7 @@ WT.naval = (function () {
   }
 
   function moveFleet(f) {
-    for (var step = 0; step < FLEET_MOVES && f.path.length; step++) {
+    for (var step = 0, n = fleetMoves(f.owner); step < n && f.path.length; step++) {
       S.moveFleet(f, f.path.shift());
       if (hostileFleets(f).length) { navalBattle(f); if (!G().fleets[f.id] || !f.path.length) return; }
     }
@@ -172,7 +181,7 @@ WT.naval = (function () {
 
   function fleetStrength(fleets) {
     var s = 0;
-    fleets.forEach(function (f) { s += f.ships * S.country(f.owner).tech * techMod(f.owner, 'fleet'); });
+    fleets.forEach(function (f) { s += (f.ships + GUNSHIP_BATTLE * (f.gunships || 0)) * S.country(f.owner).tech * techMod(f.owner, 'fleet'); });
     return s * U.randRange(0.85, 1.15);
   }
 
@@ -195,10 +204,90 @@ WT.naval = (function () {
   function damageFleets(fleets, frac, lost) {
     fleets.forEach(function (fl) {
       fl.ships = U.round(fl.ships * (1 - frac), 2);
+      if (fl.gunships) fl.gunships = Math.floor(fl.gunships * (1 - frac) + U.rand());
       if (lost) fl.cargo.forEach(function (id) { var a = G().armies[id]; if (a) a.size = Math.floor(a.size * 0.5); });
-      if (fl.ships < 0.5) { S.removeFleet(fl.id); return; }
+      if (isEmptyFleet(fl)) { S.removeFleet(fl.id); return; }
       if (lost) retreatFleet(fl);
     });
+  }
+
+  function isEmptyFleet(fl) { return fl.ships < 0.5 && !(fl.gunships > 0); }
+
+  // =====================================================================
+  // Okręty artyleryjskie: zakup i ostrzał wybrzeża
+  // =====================================================================
+
+  function gunshipCost(n) { return U.round(n * GUNSHIP_COST, 2); }
+
+  function canBuyGunships(cc, provId, n) {
+    var p = G().provinces[provId];
+    if (!(n >= 1)) return { ok: false, reason: 'Podaj liczbę okrętów.' };
+    if (!p || p.owner !== cc || p.ctrl !== cc) return { ok: false, reason: 'Okręty kupuje się we własnej, kontrolowanej prowincji.' };
+    if (!S.provStatic(provId).coastal || (p.buildings.port || 0) < 1) return { ok: false, reason: 'Wymagany port.' };
+    if (!WT.economy.canAfford(cc, gunshipCost(n))) return { ok: false, reason: 'Brak środków: potrzeba ' + U.fmtMoney(gunshipCost(n)) + '.' };
+    return { ok: true, reason: n + ' okr. artyleryjskich za ' + U.fmtMoney(gunshipCost(n)) + '.' };
+  }
+
+  /** Okręty dołączają do stojącej w porcie floty (albo tworzą nową flotę bez eskadr transportowych). */
+  function buyGunships(cc, provId, n) {
+    n = Math.floor(n);
+    if (!canBuyGunships(cc, provId, n).ok) return null;
+    WT.economy.pay(cc, gunshipCost(n));
+    var f = S.fleetsIn(provId).filter(function (x) { return x.owner === cc && !x.path.length && !x.cargo.length; })[0];
+    if (!f) { f = S.createFleet(cc, provId, 0); }
+    f.gunships = (f.gunships || 0) + n;
+    return f;
+  }
+
+  /** Ostrzał: floty z okrętami artyleryjskimi stojące przy prowincji wroga (po ruchu flot). */
+  function shellAll() {
+    Object.keys(G().fleets).forEach(function (id) {
+      var f = G().fleets[id];
+      if (!f || !(f.gunships > 0) || f.path.length) return;
+      var p = G().provinces[f.prov];
+      if (p && D().atWar(f.owner, p.ctrl)) shellProvince(f);
+    });
+  }
+
+  function shellProvince(f) {
+    var provId = f.prov, p = G().provinces[provId], defender = p.ctrl;
+    var resist = techMod(defender, 'coastDef');
+    var power = f.gunships * S.country(f.owner).tech * techMod(f.owner, 'shellDamage') * resist * U.randRange(0.8, 1.2);
+    var killed = shellArmies(f.owner, provId, power);
+    var devBefore = p.dev;
+    p.dev = Math.max(0.3, p.dev - Math.min(SHELL_MAX_DEV, SHELL_DEV * power));
+    p.bombed = Math.max(p.bombed || 0, 2);
+    var fortHit = p.buildings.fort > 0 && U.chance(Math.min(0.5, SHELL_FORT * power));
+    if (fortHit) p.buildings.fort--;
+    var sunk = 0, fire = FORT_RETURN_FIRE * (p.buildings.fort || 0) / resist;
+    for (var i = 0; i < f.gunships; i++) if (U.chance(fire)) sunk++;
+    f.gunships -= sunk;
+    var r = { attacker: f.owner, defender: defender, prov: provId, killed: killed, devLoss: U.round(devBefore - p.dev, 3), fortHit: fortHit, sunk: sunk, ships: f.gunships + sunk };
+    logShelling(r);
+    WT.events.emit('shelling', r);
+    if (isEmptyFleet(f)) S.removeFleet(f.id);
+    return r;
+  }
+
+  /** Straty wrogich armii w prowincji: proporcjonalnie do liczebności, maks. 15% na turę. */
+  function shellArmies(owner, provId, power) {
+    var enemies = S.armiesIn(provId).filter(function (a) { return !a.embarked && D().atWar(owner, a.owner); });
+    var total = enemies.reduce(function (s, a) { return s + a.size; }, 0);
+    if (!total) return 0;
+    var loss = Math.min(total * SHELL_MAX_ARMY, power * SHELL_SOLDIERS), killed = 0;
+    enemies.forEach(function (a) {
+      var l = Math.floor(loss * a.size / total);
+      a.size -= l; killed += l;
+      if (a.size < Mil().MIN_ARMY) S.removeArmy(a.id);
+    });
+    return killed;
+  }
+
+  function logShelling(r) {
+    if (!S.involvesPlayer(r.attacker, r.defender)) return;
+    S.addLog('Ostrzał z morza: ' + name(r.attacker) + ' ostrzeliwuje ' + S.provStatic(r.prov).name + ' (' + name(r.defender) + '). ' +
+      'Straty wojska: ' + U.fmtK(r.killed) + ', rozwój −' + r.devLoss.toFixed(2) + (r.fortHit ? ', uszkodzony fort' : '') +
+      (r.sunk ? '; forty zatopiły ' + r.sunk + ' okr.' : '') + '.', r.attacker === G().player ? r.attacker : r.defender);
   }
 
   function retreatFleet(fl) {
@@ -214,7 +303,8 @@ WT.naval = (function () {
   }
 
   return {
-    FLEET_MOVES: FLEET_MOVES, SHIP_CAPACITY: SHIP_CAPACITY,
+    FLEET_MOVES: FLEET_MOVES, SHIP_CAPACITY: SHIP_CAPACITY, GUNSHIP_COST: GUNSHIP_COST,
+    fleetMoves: fleetMoves, gunshipCost: gunshipCost, canBuyGunships: canBuyGunships, buyGunships: buyGunships, shellAll: shellAll, shellProvince: shellProvince,
     isPort: isPort, seaPath: seaPath, seaTurns: seaTurns, orderFleet: orderFleet,
     freeCapacity: freeCapacity, cargoSize: cargoSize, planInvasion: planInvasion, unload: unload,
     moveFleets: moveFleets, navalBattle: navalBattle

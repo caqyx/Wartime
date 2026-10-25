@@ -25,7 +25,7 @@ WT.turn = (function () {
     try {
       timings = {};
       timed('ai', function () { WT.ai.runAll(); });
-      timed('fleets', function () { WT.naval.moveFleets(); });
+      timed('fleets', function () { WT.naval.moveFleets(); WT.naval.shellAll(); });
       timed('air', function () { WT.air.processTurn(); });
       timed('armies', function () { WT.military.moveAll(); });
       timed('occupation', function () { WT.military.resolveOccupations(); WT.military.applyAttrition(); });

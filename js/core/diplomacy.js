@@ -240,7 +240,8 @@ WT.diplomacy = (function () {
     var age = G().turn - war.start;
     if (type === 'white') {
       if (war.attackers[0] === evaluator && age < 8 && my > -20) return { accept: false, reason: name(evaluator) + ': dopiero zaczęliśmy tę wojnę.' };
-      if (my <= 10 || ex >= 60 || (age > 52 && my < 30)) return { accept: true, reason: name(evaluator) + ' przyjmuje biały pokój.' };
+      var calm = 15 * (1 - aggression());   // spokojniejsze AI łatwiej przyjmuje biały pokój
+      if (my <= 10 + calm || ex >= 60 || (age > 52 && my < 30)) return { accept: true, reason: name(evaluator) + ' przyjmuje biały pokój.' };
       return { accept: false, reason: name(evaluator) + ' odrzuca: wygrywamy tę wojnę (wynik ' + my + ').' };
     }
     if (type === 'annex') {
@@ -502,6 +503,9 @@ WT.diplomacy = (function () {
     });
   }
 
+  /** Agresywność AI z ustawień jako mnożnik: 0 (pokojowe) … 1 (standard) … 2 (bardzo agresywne). */
+  function aggression() { return S.settings().aiAggression / 50; }
+
   function improveRelationsCost(a) { return U.round(1 + WT.economy.countryGdp(a) * 0.001, 2); }
 
   function improveRelations(a, b) {
@@ -654,6 +658,10 @@ WT.diplomacy = (function () {
   function addProposal(from, to, type, terms) {
     var dup = G().proposals.some(function (p) { return p.from === from && p.to === to && p.type === type; });
     if (dup) return null;
+    if (type === 'pact' && isPlayer(to) && S.settings().autoRejectPacts) {
+      S.addLog('Automatycznie odrzucono pakt o nieagresji od: ' + name(from) + '.', to);
+      return { id: null, autoRejected: true };   // traktowane jak złożona oferta (cooldown AI), bez okna dla gracza
+    }
     var p = { id: S.newId('p'), from: from, to: to, type: type, terms: terms || {}, turn: G().turn };
     p.text = PROPOSAL_TEXT[type](p);
     G().proposals.push(p);
@@ -727,7 +735,7 @@ WT.diplomacy = (function () {
     proposePeace: proposePeace, evaluatePeace: evaluatePeace, concludePeace: concludePeace,
     proposeAlliance: proposeAlliance, evaluateAlliance: evaluateAlliance, commonEnemyOrThreat: commonEnemyOrThreat, MAX_ALLIANCES: MAX_ALLIANCES, formAlliance: formAlliance, breakAlliance: breakAlliance,
     proposePact: proposePact, makePact: makePact, breakPact: breakPact,
-    proposeTrade: proposeTrade, makeTrade: makeTrade, cancelTrade: cancelTrade, hasTrade: hasTrade, tradesOf: tradesOf,
+    aggression: aggression, proposeTrade: proposeTrade, makeTrade: makeTrade, cancelTrade: cancelTrade, hasTrade: hasTrade, tradesOf: tradesOf,
     improveRelations: improveRelations, improveRelationsCost: improveRelationsCost, insult: insult,
     giveMoney: giveMoney, giveTroops: giveTroops, availableTroops: availableTroops, aidTroopsReason: aidTroopsReason, aidDestination: aidDestination,
     addProposal: addProposal, answerProposal: answerProposal,

@@ -37,6 +37,7 @@
     <!-- Menu rozwijane -->
     <div id="menu" class="dropdown hidden">
       <button class="menu-item" data-act="save">Zapisz / wczytaj…</button>
+      <button class="menu-item" data-act="settings">Ustawienia gry…</button>
       <button class="menu-item" data-act="science">Nauka i technologie</button>
       <button class="menu-item" data-act="ranking">Ranking państw</button>
       <button class="menu-item" data-act="god-toggle" id="menu-god-toggle">Włącz God Mode</button>
@@ -90,6 +91,8 @@
         <div id="start-card" class="country-card empty">Kliknij państwo na mapie lub wybierz z listy.</div>
         <label class="check"><input type="checkbox" id="opt-god"> <span>God Mode (nielimitowana kasa)</span></label>
         <label class="check"><input type="checkbox" id="opt-wars" checked> <span>Trwające konflikty 2026 (Rosja–Ukraina)</span></label>
+        <label class="check"><input type="checkbox" id="opt-nopacts"> <span>Automatycznie odrzucaj pakty o nieagresji</span></label>
+        <div class="aggr-row" id="opt-aggr-row"><span class="aggr-lbl">Agresywność AI</span><input type="range" id="opt-aggr" min="0" max="100" step="5" value="50"><span class="aggr-val" id="opt-aggr-val">Standardowa</span></div>
         <div class="start-actions">
           <button class="btn btn-primary btn-lg" id="btn-start" disabled>Rozpocznij</button>
           <button class="btn btn-lg" id="btn-load">Wczytaj grę</button>

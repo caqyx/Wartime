@@ -170,7 +170,7 @@ button, .country-item, .army-row, .log-head, .check { -webkit-tap-highlight-colo
   .start-panel .country-list { order: 3; flex: none; height: 34vh; height: 34dvh; min-height: 150px; }
   .start-panel .check, .start-panel .start-options { order: 4; }
   .start-actions {
-    order: 5; position: sticky; bottom: 0; z-index: 1; margin: 0 -14px; padding: 8px 14px calc(10px + var(--sa-b));
+    order: 5; position: sticky; bottom: 0; z-index: 5; isolation: isolate; margin: 0 -14px; padding: 8px 14px calc(10px + var(--sa-b));
     background: var(--glass-bg-solid, var(--bg-1));
   }
   .start-actions .btn { min-height: 48px; }

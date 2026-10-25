@@ -22,18 +22,30 @@ WT.tech = (function () {
     { id: 'mil2', branch: 'mil', name: 'Logistyka', cost: 110, req: ['mil1'], mul: { attrition: 0.5 }, tech: 0.02, desc: 'wyniszczenie na ziemi wroga −50%, +0,02 technologii' },
     { id: 'mil3', branch: 'mil', name: 'Broń precyzyjna', cost: 200, req: ['mil2'], tech: 0.06, desc: '+0,06 technologii' },
     { id: 'mil4', branch: 'mil', name: 'Pole walki sieciocentryczne', cost: 360, req: ['mil3'], tech: 0.08, desc: '+0,08 technologii' },
+    { id: 'mil5', branch: 'mil', name: 'Szkolenie rezerw', cost: 100, req: ['mil1'], mul: { recruitCost: 0.8 }, desc: 'rekrutacja −20% kosztów' },
+    { id: 'mil6', branch: 'mil', name: 'Drony bojowe', cost: 280, req: ['mil3'], tech: 0.05, desc: '+0,05 technologii' },
     { id: 'def1', branch: 'def', name: 'Umocnienia', cost: 70, req: [], mul: { fort: 1.4 }, desc: 'forty +40% skuteczności (35% obrony na poziom)' },
     { id: 'def2', branch: 'def', name: 'Zintegrowana OPL', cost: 140, req: ['def1'], mul: { aaKill: 1.25 }, add: { aaCap: 0.05 }, desc: 'działka zestrzeliwują o 25% skuteczniej, limit 80%' },
     { id: 'def3', branch: 'def', name: 'Radary dalekiego zasięgu', cost: 150, req: ['def2'], mul: { radarRange: 1.4 }, desc: 'zasięg radarów +40%' },
+    { id: 'def4', branch: 'def', name: 'Obrona wybrzeża', cost: 120, req: ['def1'], mul: { coastDef: 0.6 }, desc: 'ostrzał z morza zadaje −40% strat, forty skuteczniej zatapiają okręty' },
+    { id: 'def5', branch: 'def', name: 'Schrony i obrona cywilna', cost: 170, req: ['def2'], mul: { bombResist: 0.6 }, desc: 'naloty bombowców wyrządzają −40% szkód' },
     { id: 'air1', branch: 'air', name: 'Bombowce strategiczne', cost: 110, req: [], add: { bomberRange: 600 }, desc: 'zasięg bombowców +600 km' },
     { id: 'air2', branch: 'air', name: 'Bomby kierowane', cost: 170, req: ['air1'], mul: { bombDamage: 1.5 }, desc: 'naloty niszczą o 50% więcej' },
     { id: 'air3', branch: 'air', name: 'Technologia stealth', cost: 320, req: ['air2'], mul: { stealth: 0.6 }, desc: 'wroga OPL zestrzeliwuje o 40% mniej twoich bombowców' },
+    { id: 'air4', branch: 'air', name: 'Tankowanie w powietrzu', cost: 140, req: ['air1'], mul: { bomberSpeed: 1.5 }, desc: 'bombowce lecą o 50% szybciej' },
+    { id: 'air5', branch: 'air', name: 'Masowa produkcja samolotów', cost: 110, req: ['air1'], mul: { planeCost: 0.7 }, desc: 'bombowce tańsze o 30%' },
     { id: 'nav1', branch: 'nav', name: 'Nowoczesne okręty', cost: 90, req: [], mul: { fleet: 1.2 }, desc: 'siła floty w bitwach +20%' },
     { id: 'nav2', branch: 'nav', name: 'Okręty desantowe', cost: 130, req: ['nav1'], mul: { shipCapacity: 1.5 }, desc: 'eskadra przewozi 15 tys. żołnierzy zamiast 10 tys.' },
+    { id: 'nav3', branch: 'nav', name: 'Artyleria okrętowa', cost: 140, req: ['nav1'], mul: { shellDamage: 1.5 }, desc: 'ostrzał z okrętów artyleryjskich +50%' },
+    { id: 'nav4', branch: 'nav', name: 'Napęd turbinowy', cost: 120, req: ['nav1'], add: { fleetSpeed: 1 }, desc: 'floty pokonują 4 węzły morskie na turę zamiast 3' },
+    { id: 'nav5', branch: 'nav', name: 'Pociski manewrujące', cost: 260, req: ['nav3'], mul: { shellDamage: 1.4 }, desc: 'ostrzał z morza kolejne +40%' },
     { id: 'eco1', branch: 'eco', name: 'Automatyzacja', cost: 80, req: [], mul: { factory: 4 / 3 }, desc: 'fabryki dają +20% zamiast +15% dochodu' },
     { id: 'eco2', branch: 'eco', name: 'Cyfrowa administracja', cost: 140, req: ['eco1'], mul: { admin: 0.8 }, desc: 'koszty administracji −20%' },
     { id: 'eco3', branch: 'eco', name: 'Gospodarka wiedzy', cost: 190, req: ['eco2'], mul: { research: 1.25 }, desc: 'punkty nauki +25%' },
-    { id: 'eco4', branch: 'eco', name: 'Nowoczesna medycyna', cost: 120, req: ['eco1'], mul: { manpower: 1.3 }, desc: 'odnawianie rezerw +30%' }
+    { id: 'eco4', branch: 'eco', name: 'Nowoczesna medycyna', cost: 120, req: ['eco1'], mul: { manpower: 1.3 }, desc: 'odnawianie rezerw +30%' },
+    { id: 'eco5', branch: 'eco', name: 'Zielona energia', cost: 130, req: ['eco1'], mul: { upkeep: 0.5 }, desc: 'utrzymanie budynków −50%' },
+    { id: 'eco6', branch: 'eco', name: 'Rozbudowa infrastruktury', cost: 150, req: ['eco1'], mul: { devGrowth: 2 }, desc: 'rozwój prowincji rośnie 2× szybciej' },
+    { id: 'eco7', branch: 'eco', name: 'Sieć 5G', cost: 220, req: ['eco2'], mul: { income: 1.05 }, desc: 'dochód podatkowy +5%' }
   ];
   var BY_ID = {};
   TREE.forEach(function (t) { BY_ID[t.id] = t; });

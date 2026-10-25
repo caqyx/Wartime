@@ -54,6 +54,7 @@ WT.save = (function () {
   function migrateBuilds(g) {
     if (!g.squadrons) g.squadrons = {};   // zapisy sprzed lotnictwa
     if (!g.trades) g.trades = [];         // zapisy sprzed umów handlowych
+    if (!g.settings) g.settings = { autoRejectPacts: false, aiAggression: 50 };
     g.provinces.forEach(function (p) {
       if (p.buildings.aa == null) p.buildings.aa = 0;
       if (p.buildings.radar == null) p.buildings.radar = 0;

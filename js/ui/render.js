@@ -1000,10 +1000,11 @@
   }
   function drawFleetIcon(f, x, y, me) {
     var color = countryColor(f.owner), mine = f.owner === me;
-    var cargo = (f.cargo || []).length;
-    var label = String(f.ships);
+    var cargo = (f.cargo || []).length, guns = f.gunships || 0;
+    var label = String(Math.round(f.ships));
     var tw = ctx.measureText(label).width, cw = cargo ? ctx.measureText(String(cargo)).width + 12 : 0;
-    var h = 19, w = Math.ceil(30 + tw + (cargo ? cw + 4 : 0));
+    var gw = guns ? ctx.measureText(String(guns)).width + 20 : 0;
+    var h = 19, w = Math.ceil(30 + tw + (cargo ? cw + 4 : 0) + (guns ? gw + 4 : 0));
     var selected = view.sel && view.sel.type === 'fleet' && view.sel.id === f.id;
     if (selected) {
       roundRect(x - 5, y - 5, w + 10, h + 10, (h + 10) / 2); ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.18)'; ctx.fill();
@@ -1018,6 +1019,15 @@
       var cx = x + h + 4 + tw + 5;
       roundRect(cx, y + 3, cw, h - 6, (h - 6) / 2); ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.22)'; ctx.fill();
       ctx.fillStyle = COLORS.accent; ctx.fillText(String(cargo), cx + 6, y + h / 2 + 0.5);
+    }
+    if (guns) {   // okręty artyleryjskie: pomarańczowa pigułka z lufą i liczbą
+      var gx = x + w - gw - 4;
+      roundRect(gx, y + 3, gw, h - 6, (h - 6) / 2); ctx.fillStyle = 'rgba(255,150,60,0.24)'; ctx.fill();
+      ctx.strokeStyle = '#ffb066'; ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(gx + 5, y + h / 2 + 3); ctx.lineTo(gx + 12, y + h / 2 - 3); ctx.stroke();
+      ctx.beginPath(); ctx.arc(gx + 6, y + h / 2 + 3, 2, 0, Math.PI * 2); ctx.fillStyle = '#ffb066'; ctx.fill();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = '#ffd2a6'; ctx.fillText(String(guns), gx + 15, y + h / 2 + 0.5);
     }
     hitFleets.push({ x: x, y: y, w: w, h: h, id: f.id, owner: f.owner, prov: f.prov });
   }

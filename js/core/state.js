@@ -47,8 +47,20 @@ WT.state = (function () {
       seed: seed, rngState: seed,
       countries: {}, provinces: [], armies: {}, fleets: {}, squadrons: {}, trades: [],
       nextId: 100, rel: {}, wars: [], alliances: [], pacts: [], truces: [],
-      proposals: [], log: [], gameOver: false
+      proposals: [], log: [], gameOver: false,
+      settings: makeSettings(opts)
     };
+  }
+
+  /** Ustawienia rozgrywki: auto-odrzucanie paktów i agresywność AI (0–100, 50 = standard). */
+  function makeSettings(opts) {
+    var a = opts && opts.aiAggression != null ? +opts.aiAggression : 50;
+    return { autoRejectPacts: !!(opts && opts.autoRejectPacts), aiAggression: U.clamp(isNaN(a) ? 50 : a, 0, 100) };
+  }
+  function settings() {
+    var g = G();
+    if (!g.settings) g.settings = makeSettings({});
+    return g.settings;
   }
 
   function createProvinces(g) {
@@ -480,7 +492,7 @@ WT.state = (function () {
     createArmy: createArmy, removeArmy: removeArmy, moveArmy: moveArmy,
     embarkArmy: embarkArmy, disembarkArmy: disembarkArmy,
     createFleet: createFleet, removeFleet: removeFleet, moveFleet: moveFleet,
-    findCapital: findCapital, addLog: addLog, involvesPlayer: involvesPlayer
+    findCapital: findCapital, addLog: addLog, involvesPlayer: involvesPlayer, settings: settings
   };
 })();
 

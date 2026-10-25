@@ -39,7 +39,8 @@ WT.air = (function () {
   // Budowa i utrzymanie
   // =====================================================================
 
-  function planeCost(cc, n) { return U.round(n * PLANE_COST * Math.max(0.5, E().costScale(cc)), 2); }
+  function planeCost(cc, n) { return U.round(n * PLANE_COST * Math.max(0.5, E().costScale(cc)) * (WT.tech ? WT.tech.mod(cc, 'planeCost') : 1), 2); }
+  function speedKm(cc) { return SPEED_KM * (WT.tech && cc ? WT.tech.mod(cc, 'bomberSpeed') : 1); }
 
   function canBuildBombers(cc, provId, n) {
     var p = G().provinces[provId];
@@ -91,9 +92,9 @@ WT.air = (function () {
   /** Zasięg bombowców kraju (technologia „Bombowce strategiczne” +600 km). */
   function rangeKm(cc) { return RANGE_KM + techAdd(cc, 'bomberRange'); }
   /** Tury do zrzutu: pierwsza tura kończy się APPROACH_KM przed celem, uderzenie najwcześniej w drugiej. */
-  function flightTurns(fromProv, toProv) {
-    var d = S.dist(fromProv, toProv), first = Math.min(SPEED_KM, Math.max(0, d - APPROACH_KM));
-    return 1 + Math.max(1, Math.ceil((d - first) / SPEED_KM));
+  function flightTurns(fromProv, toProv, cc) {
+    var v = speedKm(cc), d = S.dist(fromProv, toProv), first = Math.min(v, Math.max(0, d - APPROACH_KM));
+    return 1 + Math.max(1, Math.ceil((d - first) / v));
   }
 
   function checkRaid(sq, target) {
@@ -111,7 +112,7 @@ WT.air = (function () {
     var sq = squads()[squadId], err = checkRaid(sq, target);
     if (err) return { ok: false, reason: err };
     sq.target = target; sq.phase = 'out'; sq.repeat = !!repeat; sq.spotted = false; sq.airborne = false;
-    var t = flightTurns(sq.base, target);
+    var t = flightTurns(sq.base, target, sq.owner);
     return { ok: true, turns: t, reason: 'Nalot na ' + provName(target) + ': ' + sq.planes + ' bombowców, dolot ok. ' + t + ' ' + (t === 1 ? 'tura' : 'tury') + '.' };
   }
 
@@ -165,17 +166,17 @@ WT.air = (function () {
     var t = center(sq.target);
     if (!sq.airborne) {   // start: dolot do punktu przed celem, zrzut w następnej turze
       sq.airborne = true;
-      moveToward(sq, t[0], t[1], Math.min(SPEED_KM, Math.max(0, kmBetween(sq.x, sq.y, t[0], t[1]) - APPROACH_KM)));
+      moveToward(sq, t[0], t[1], Math.min(speedKm(sq.owner), Math.max(0, kmBetween(sq.x, sq.y, t[0], t[1]) - APPROACH_KM)));
       return;
     }
-    if (!moveToward(sq, t[0], t[1], SPEED_KM)) return;
+    if (!moveToward(sq, t[0], t[1], speedKm(sq.owner))) return;
     bombProvince(sq);
     if (squads()[sq.id]) { sq.phase = 'back'; sq.spotted = false; }
   }
 
   function flyBack(sq) {
     var b = center(sq.base);
-    if (!moveToward(sq, b[0], b[1], SPEED_KM)) return;
+    if (!moveToward(sq, b[0], b[1], speedKm(sq.owner))) return;
     sq.phase = 'idle';
     if (sq.repeat && !checkRaid(sq, sq.target)) { sq.phase = 'out'; sq.airborne = false; sq.spotted = false; return; }
     sq.repeat = false; sq.target = -1;
@@ -206,7 +207,7 @@ WT.air = (function () {
     for (var i = 0; i < sq.planes; i++) if (U.chance(chance)) shot++;
     var hits = sq.planes - shot;
     sq.planes = hits;
-    var damage = applyDamage(provId, hits, techMod(sq.owner, 'bombDamage'));
+    var damage = applyDamage(provId, hits, techMod(sq.owner, 'bombDamage') * techMod(defender, 'bombResist'));
     var report = { attacker: sq.owner, defender: defender, prov: provId, planes: hits + shot, shot: shot, hits: hits, devLoss: damage.devLoss, destroyed: damage.destroyed };
     logRaid(report);
     WT.events.emit('bombing', report);
@@ -293,7 +294,7 @@ WT.air = (function () {
       if (sq.owner === me || sq.phase !== 'out' || sq.spotted || !D().atWar(sq.owner, me)) continue;
       if (!radarCovers(me, sq.x, sq.y, stations)) continue;
       sq.spotted = true;
-      var report = { attacker: sq.owner, planes: sq.planes, target: sq.target, turns: Math.max(1, Math.ceil(kmBetween(sq.x, sq.y, center(sq.target)[0], center(sq.target)[1]) / SPEED_KM)) };
+      var report = { attacker: sq.owner, planes: sq.planes, target: sq.target, turns: Math.max(1, Math.ceil(kmBetween(sq.x, sq.y, center(sq.target)[0], center(sq.target)[1]) / speedKm(sq.owner))) };
       S.addLog('Radar: wykryto ' + sq.planes + ' bombowców (' + name(sq.owner) + ') lecących na ' + provName(sq.target) + '.', me);
       WT.events.emit('radar', report);
     }
@@ -303,7 +304,7 @@ WT.air = (function () {
     RANGE_KM: RANGE_KM, SPEED_KM: SPEED_KM, MAX_BUILD: MAX_BUILD, MAX_INTERCEPT: MAX_INTERCEPT,
     planeCost: planeCost, canBuildBombers: canBuildBombers, buildBombers: buildBombers,
     squadronsOf: squadronsOf, squadronsAt: squadronsAt, planesOf: planesOf, upkeep: upkeep, disband: disband,
-    rangeKm: rangeKm, flightTurns: flightTurns, checkRaid: checkRaid, orderRaid: orderRaid, recall: recall,
+    rangeKm: rangeKm, speedKm: speedKm, flightTurns: flightTurns, checkRaid: checkRaid, orderRaid: orderRaid, recall: recall,
     processTurn: processTurn, interceptChance: interceptChance, bombProvince: bombProvince,
     radarRangeKm: radarRangeKm, radarStations: radarStations, radarCovers: radarCovers, visibleFor: visibleFor
   };
