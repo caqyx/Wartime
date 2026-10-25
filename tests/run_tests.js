@@ -718,6 +718,27 @@ test('nowe technologie: efekty', function () {
   eq(WT.tech.TREE.length, 28, '28 technologii w drzewku');
 });
 
+test('stary zapis bez dopisanych prowincji (np. Afryki) rozszerza świat', function () {
+  freshGame();
+  WT.turn.end();
+  var g = JSON.parse(JSON.stringify(G()));
+  var cut = MAP_DATA.provinces.findIndex(function (p) { return p.cc === 'ISL'; });   // wyspa ISL = ostatnie prowincje mapy
+  g.provinces = g.provinces.slice(0, cut);
+  delete g.countries.ISL;
+  Object.keys(g.armies).forEach(function (id) { if (g.armies[id].owner === 'ISL') delete g.armies[id]; });
+  Object.keys(g.fleets).forEach(function (id) { if (g.fleets[id].owner === 'ISL') delete g.fleets[id]; });
+  Object.keys(g.rel).forEach(function (k) { if (k.indexOf('ISL') >= 0) delete g.rel[k]; });
+  var aaaTreasury = g.countries.AAA.treasury, turn = g.turn;
+  assert(WT.save.importJSON(JSON.stringify(g)), 'zapis wczytany mimo krótszej listy prowincji');
+  eq(G().provinces.length, MAP_DATA.provinces.length, 'prowincje dobudowane');
+  assert(G().countries.ISL && G().countries.ISL.alive && G().countries.ISL.capital >= cut, 'nowe państwo ze stolicą');
+  eq(G().countries.AAA.treasury, aaaTreasury, 'stan istniejących państw bez zmian');
+  eq(G().turn, turn, 'tura bez zmian');
+  assert(G().provinces[cut].gdp > 0, 'PKB nowych prowincji');
+  for (var i = 0; i < 3; i++) WT.turn.end();
+  assert(true, 'gra toczy się dalej');
+});
+
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {
   freshGame({ player: 'AAA', god: true });
   var c = G().countries.AAA, t0 = c.treasury;

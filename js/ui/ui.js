@@ -251,7 +251,7 @@
     const lh = $('log-head');
     if (lh && !lh.querySelector('.ico')) { lh.firstElementChild.insertAdjacentHTML('afterbegin', icon('clock', 'ico-sm')); $('log-toggle').innerHTML = icon('chevron', 'ico-sm'); }
     const title = document.querySelector('.start-title');
-    if (title && !title.querySelector('.eyebrow')) title.insertAdjacentHTML('afterbegin', '<span class="eyebrow">Strategia turowa · Europa i Azja</span>');
+    if (title && !title.querySelector('.eyebrow')) title.insertAdjacentHTML('afterbegin', '<span class="eyebrow">Strategia turowa · Europa, Azja, Afryka</span>');
     const optGod = $('opt-god'), optWars = $('opt-wars');
     if (optGod && !document.querySelector('.start-options')) {
       const box = document.createElement('div'); box.className = 'start-options';

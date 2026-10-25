@@ -35,7 +35,7 @@ NE_BASE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master
 # ---------------------------------------------------------------- parameters
 WIDTH = 4000
 LON_MIN, LON_MAX = -32.0, 192.0      # -32 so the Azores fit; 192 covers Chukotka (+360)
-LAT_MIN, LAT_MAX = -12.0, 82.0
+LAT_MIN, LAT_MAX = -36.0, 82.0     # -36: cała Afryka; projekcja zakotwiczona u góry, więc Europa/Azja się nie przesuwają
 SIMPLIFY_TOL = 0.45                  # map units (~0.025 deg) for coverage simplification
 MIN_PART_AREA = 0.6                  # map units^2: drop islets smaller than this (keep >=1 part)
 BG_SIMPLIFY_DEG = 0.08
@@ -46,7 +46,8 @@ STRAIT_MIN_PART = 8.0             # map units^2 (~150-300 km2): smaller islets g
 MAX_PROV = 90
 
 # Extra (non Europe/Asia "CONTINENT") countries that are included as playable.
-EXTRA_PLAYABLE = {"MDV"}
+EXTRA_PLAYABLE = {"MDV", "MUS", "SYC"}
+PLAYABLE_CONTINENTS = ("Europe", "Asia", "Africa")
 # admin-0 units that are folded into another playable country (code -> owner).
 MERGE_INTO = {
     "CYN": "CYP", "ESB": "CYP", "WSB": "CYP", "CNM": "CYP",   # Cyprus as one country
@@ -56,12 +57,18 @@ MERGE_INTO = {
     "JEY": "GBR", "GGY": "GBR", "IMN": "GBR",
     "ALD": "FIN", "FRO": "DNK",
     "GIB": "GBR",
+    "SAH": "MAR",                                             # Sahara Zachodnia (de facto Maroko)
+    "SOL": "SOM",                                             # Somaliland
+    "BRT": "EGY",                                             # Bir Tawil (ziemia niczyja)
 }
-FOLDED_NAMES = {"CYN": "Northern Cyprus", "KAS": "Siachen", "WSB": "Akrotiri", "ESB": "Dhekelia"}
+FOLDED_NAMES = {"CYN": "Northern Cyprus", "KAS": "Siachen", "WSB": "Akrotiri", "ESB": "Dhekelia",
+                "SAH": "Western Sahara", "SOL": "Somaliland"}
 # admin-0 units dropped entirely (outside scope / not land of a playable state)
-DROP = {"IOA", "PGA", "SCR", "ATC", "USG", "SPI", "BJN", "GRL", "EGY", "PNG"}
+DROP = {"IOA", "PGA", "SCR", "ATC", "USG", "SPI", "BJN", "GRL", "PNG", "ATF", "SHN", "IOT"}
 # admin names to skip (overseas parts that share an adm0 code)
 DROP_ADMIN = {"Caribbean Netherlands"}
+# admin-1 names to skip (overseas departments inside the map frame)
+DROP_A1 = {"La Réunion", "Mayotte"}
 
 S = WIDTH / (LON_MAX - LON_MIN)      # map units per degree of longitude
 
@@ -190,6 +197,8 @@ HILLS_CC = {"MNE", "ALB", "BIH", "MKD", "KOS", "GRC", "TUR", "LAO", "JPN", "KOR"
 FOREST_CC = {"FIN", "SWE", "EST", "LVA", "BLR"}
 JUNGLE_CC = {"IDN", "MYS", "BRN", "SGP", "TLS", "PHL"}
 DESERT_CC = {"SAU", "ARE", "QAT", "KWT", "OMN", "BHR", "TKM"}
+AFRICA_DESERT_CC = {"LBY", "EGY", "DZA", "MRT", "DJI"}
+AFRICA_SAHEL_CC = {"MAR", "TUN", "MLI", "NER", "TCD", "SDN", "ERI"}
 
 
 def in_box(lon, lat, b):
@@ -225,6 +234,12 @@ def terrain_for(cc, lon, lat):
         return "desert"
     if cc == "IND" and 69 <= lon <= 74.5 and 24 <= lat <= 30.5:
         return "desert"
+    if cc in AFRICA_DESERT_CC or (15 <= lat <= 33 and -17 <= lon <= 34 and cc in AFRICA_SAHEL_CC) or in_box(lon, lat, (11.5, -28, 25, -17)):
+        return "desert"                     # Sahara, Sahel (północ), Namib i Kalahari
+    if in_box(lon, lat, (8, -6, 31, 5.5)):
+        return "jungle"                     # Kotlina Konga
+    if in_box(lon, lat, (35, 6, 42, 15)) or in_box(lon, lat, (28, -30.5, 32, -28.5)):
+        return "mountains"                  # Wyżyna Abisyńska, Lesotho/Drakensberg
     if cc in JUNGLE_CC or (lat < 13 and cc in ("THA", "MMR", "KHM", "VNM", "LKA", "IND")):
         return "jungle"
     if cc in FOREST_CC or (cc == "RUS" and 55 <= lat <= 64) or (cc == "NOR" and lat > 61):
@@ -256,7 +271,7 @@ def main():
         a0geom[code] = f["geometry"]
         if code in DROP or code in MERGE_INTO:
             continue
-        if p["CONTINENT"] in ("Europe", "Asia") or code in EXTRA_PLAYABLE:
+        if p["CONTINENT"] in PLAYABLE_CONTINENTS or code in EXTRA_PLAYABLE:
             playable.add(code)
     owner_of = {c: c for c in playable}
     owner_of.update({k: v for k, v in MERGE_INTO.items()})
@@ -267,7 +282,7 @@ def main():
     for f in a1["features"]:
         p = f["properties"]
         code = p["adm0_a3"]
-        if code not in owner_of or p.get("admin") in DROP_ADMIN:
+        if code not in owner_of or p.get("admin") in DROP_ADMIN or p.get("name") in DROP_A1:
             continue
         g = shape(f["geometry"])
         if not g.is_valid:
@@ -571,6 +586,7 @@ def main():
         "background": bg_rings,
         "countries": countries,
     }
+    data = keep_old_ids(data)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     js = json.dumps(data, separators=(",", ":"), ensure_ascii=False)
     with open(OUT, "w", encoding="utf-8") as fh:
@@ -580,6 +596,45 @@ def main():
     report(data, merge_log, enclaves)
     if want_preview:
         render_preview(data)
+
+
+def keep_old_ids(data, old_path=OUT):
+    """Zapisy gry odwołują się do prowincji po numerze. Prowincje obecne w poprzedniej mapie dostają
+    swoje stare id (dopasowanie po państwie i nazwie, w razie wątpliwości po najbliższym centroidzie),
+    nowe (np. Afryka) są dopisywane na końcu. Brak dopasowania starej prowincji przerywa build."""
+    if not os.path.exists(old_path):
+        return data
+    with open(old_path, encoding="utf-8") as fh:
+        txt = fh.read()
+    old = json.loads(txt[txt.index("{"):txt.rindex("}") + 1])["provinces"]
+    new = data["provinces"]
+    by_key = defaultdict(list)
+    for p in new:
+        by_key[(p["cc"], p["name_en"])].append(p["id"])
+    taken, order = set(), []
+    for op in old:
+        cands = [i for i in by_key.get((op["cc"], op.get("name_en") or op["name"]), []) if i not in taken]
+        if not cands:
+            cands = [p["id"] for p in new if p["cc"] == op["cc"] and p["id"] not in taken]
+        if not cands:
+            raise SystemExit(f"keep_old_ids: brak odpowiednika dla {op['cc']}:{op['name']} (id {op['id']})")
+        best = min(cands, key=lambda i: (new[i]["cx"] - op["cx"]) ** 2 + (new[i]["cy"] - op["cy"]) ** 2)
+        taken.add(best)
+        order.append(best)
+    order += [p["id"] for p in new if p["id"] not in taken]
+    remap = {old_id: k for k, old_id in enumerate(order)}
+    provs = []
+    for k, i in enumerate(order):
+        p = dict(new[i]); p["id"] = k; p["nb"] = sorted(remap[j] for j in p["nb"])
+        provs.append(p)
+    def pair(a, b):
+        a, b = remap[a], remap[b]
+        return (a, b) if a < b else (b, a)
+    data["provinces"] = provs
+    data["seaLinks"] = sorted([list(pair(a, b)) + [d] for a, b, d in data["seaLinks"]])
+    data["straits"] = sorted([list(pair(a, b)) for a, b in data["straits"]])
+    print(f"keep_old_ids: {len(old)} prowincji zachowało numery, nowych: {len(provs) - len(old)}")
+    return data
 
 
 def merge_country(us, target):

@@ -1,6 +1,6 @@
 # Wartime 2026
 
-Turowa gra strategiczna w stylu Age of History II. Mapa Europy i Azji (1026 prowincji, 94 państwa) w stanie na 1 stycznia 2026. Wszystkie państwa grywalne, na starcie bez sojuszy.
+Turowa gra strategiczna w stylu Age of History II. Mapa Europy, Azji i Afryki (1639 prowincji, 148 państw) w stanie na 1 stycznia 2026. Afryka dołączyła w późniejszej wersji — stare zapisy wczytują się i automatycznie dostają afrykańskie państwa. Wszystkie państwa grywalne, na starcie bez sojuszy.
 
 ## Uruchomienie
 

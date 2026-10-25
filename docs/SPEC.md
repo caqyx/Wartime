@@ -330,3 +330,9 @@ Fonty: systemowe sans + monospace dla liczb.
 - `G.settings { autoRejectPacts, aiAggression }` (`state.settings()`, opcje `newGame`); `diplomacy.aggression()` → 0…2; `ai.aggressionOf(cc, target)` → 0–100 (100 = wojna).
 - Nowe klucze technologii: recruitCost, coastDef, bombResist, bomberSpeed, planeCost, shellDamage, fleetSpeed, upkeep, devGrowth, income.
 
+### Afryka i zgodność zapisów
+- Mapa: Europa, Azja i Afryka (`LAT_MIN = -36`; projekcja Millera zakotwiczona u góry, więc współrzędne Europy/Azji się nie zmieniły). 1639 prowincji, 148 państw.
+- `tools/build_map.py → keep_old_ids()`: prowincje z poprzedniej mapy zachowują numery, nowe są dopisywane na końcu (build przerywa się, jeśli którejś starej nie da się dopasować).
+- `state.extendWorld(g)`: zapis z krótszą listą prowincji dostaje brakujące prowincje i państwa (stolice, PKB, relacje, forty, armie, floty jak w nowej grze); `save.applyState` wywołuje to automatycznie. Zapis z dłuższą listą niż mapa jest odrzucany.
+- Aliasy NE: SAH→MAR, SOL→SOM, BRT→EGY; pominięte: Réunion, Majotta, ATF, SHN, IOT.
+

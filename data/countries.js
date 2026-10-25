@@ -1,7 +1,7 @@
 /*
  * Wartime 2026 — dane państw (stan na 1 stycznia 2026).
  * Kontrakt: docs/SPEC.md, sekcja 2. Klucze = ADM0_A3 z Natural Earth 10m admin-0
- * (wszystkie kraje z CONTINENT = Europe | Asia, plus Malediwy z "Seven seas").
+ * (wszystkie kraje z CONTINENT = Europe | Asia | Africa, plus Malediwy, Seszele i Mauritius z "Seven seas").
  *
  * Źródła / szacunki (zaokrąglone, przybliżone — to gra, nie rocznik statystyczny):
  *  - gdp:  nominalne PKB 2026 w mld USD, prognozy IMF World Economic Outlook (X 2025);
@@ -225,7 +225,120 @@ window.COUNTRY_DATA = {
   KOR: { name: "Korea Południowa", color: "#4f7ff0", capital: "Seoul", capitalLonLat: [126.98, 37.57], gdp: 1900, pop: 51.6, army: 450, navy: 15, tech: 1.10,
          gov: "republika prezydencka", ideology: "demokracja", friends: ["JPN","POL","TWN","PHL","VNM"], rivals: ["PRK"] },
   PRK: { name: "Korea Północna", color: "#8a2a52", capital: "P'yŏngyang", capitalLonLat: [125.76, 39.04], gdp: 30, pop: 26.5, army: 1280, navy: 4, tech: 0.55,
-         gov: "republika ludowa (dyktatura dynastyczna)", ideology: "komunizm", friends: ["RUS","CHN","IRN","BLR"], rivals: ["KOR","JPN","UKR"] }
+         gov: "republika ludowa (dyktatura dynastyczna)", ideology: "komunizm", friends: ["RUS","CHN","IRN","BLR"], rivals: ["KOR","JPN","UKR"] },
+  // ---------------- Afryka Północna ----------------
+  EGY: { name: "Egipt", color: "#bc42bc", capital: "Al Qahirah", capitalLonLat: [31.24, 30.04], gdp: 400, pop: 116, army: 440, navy: 9, tech: 0.75,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["SAU","ARE","GRC","CYP","FRA","ERI","SOM"], rivals: ["ETH"] },
+  LBY: { name: "Libia", color: "#4273bc", capital: "Tripoli", capitalLonLat: [13.19, 32.89], gdp: 50, pop: 7.4, army: 30, navy: 1, tech: 0.50,
+         gov: "rząd tymczasowy (kraj podzielony)", ideology: "autorytaryzm", friends: ["TUR","EGY"], rivals: [] },
+  TUN: { name: "Tunezja", color: "#bc42b0", capital: "Tunis", capitalLonLat: [10.18, 36.81], gdp: 55, pop: 12.3, army: 36, navy: 1, tech: 0.60,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["DZA","FRA","ITA"], rivals: [] },
+  DZA: { name: "Algieria", color: "#c98787", capital: "Alger", capitalLonLat: [3.06, 36.75], gdp: 280, pop: 47.4, army: 140, navy: 5, tech: 0.75,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["RUS","CHN","TUN"], rivals: ["MAR","MLI"] },
+  MAR: { name: "Maroko", color: "#439d79", capital: "Rabat - Salé - Zemmour - Zaer", capitalLonLat: [-6.84, 34.02], gdp: 175, pop: 38.4, army: 196, navy: 3, tech: 0.75,
+         gov: "monarchia konstytucyjna", ideology: "monarchia", friends: ["FRA","ESP","ARE","SAU","ISR","SEN","CIV"], rivals: ["DZA"] },
+  MRT: { name: "Mauretania", color: "#55439d", capital: "Nouakchott", capitalLonLat: [-15.98, 18.08], gdp: 12, pop: 5.3, army: 16, navy: 1, tech: 0.50,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["SEN","MAR"], rivals: [] },
+  SDN: { name: "Sudan", color: "#bc7f42", capital: "Khartoum", capitalLonLat: [32.53, 15.59], gdp: 35, pop: 51, army: 100, navy: 1, tech: 0.50,
+         gov: "junta wojskowa (wojna domowa)", ideology: "autorytaryzm", friends: ["EGY","SAU","ERI","TUR"], rivals: ["ARE","TCD"] },
+  SDS: { name: "Sudan Południowy", color: "#67bc42", capital: "Central Equatoria", capitalLonLat: [31.58, 4.85], gdp: 6, pop: 12, army: 185, navy: 0, tech: 0.40,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["UGA","KEN"], rivals: [] },
+  // ---------------- Afryka Zachodnia ----------------
+  SEN: { name: "Senegal", color: "#87c9bc", capital: "Dakar", capitalLonLat: [-17.45, 14.69], gdp: 35, pop: 18.9, army: 14, navy: 1, tech: 0.60,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["FRA","GMB","MAR","MRT"], rivals: [] },
+  GMB: { name: "Gambia", color: "#8166c0", capital: "Banjul", capitalLonLat: [-16.58, 13.45], gdp: 2.6, pop: 2.9, army: 1, navy: 0, tech: 0.45,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["SEN"], rivals: [] },
+  GNB: { name: "Gwinea Bissau", color: "#bc5a42", capital: "Bissau", capitalLonLat: [-15.6, 11.86], gdp: 2.3, pop: 2.2, army: 4.5, navy: 0, tech: 0.40,
+         gov: "republika semiprezydencka", ideology: "autorytaryzm", friends: ["SEN"], rivals: [] },
+  GIN: { name: "Gwinea", color: "#b587c9", capital: "Conakry", capitalLonLat: [-13.71, 9.51], gdp: 30, pop: 15, army: 10, navy: 0, tech: 0.45,
+         gov: "junta wojskowa", ideology: "autorytaryzm", friends: ["MLI","BFA"], rivals: [] },
+  SLE: { name: "Sierra Leone", color: "#9d6743", capital: "Western", capitalLonLat: [-13.23, 8.48], gdp: 5, pop: 8.9, army: 8.5, navy: 0, tech: 0.45,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["LBR","GBR"], rivals: [] },
+  LBR: { name: "Liberia", color: "#97bc42", capital: "Montserrado", capitalLonLat: [-10.80, 6.30], gdp: 5, pop: 5.6, army: 2, navy: 0, tech: 0.40,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["SLE"], rivals: [] },
+  CIV: { name: "Wybrzeże Kości Słoniowej", color: "#439d9d", capital: "Lacs", capitalLonLat: [-5.28, 6.82], gdp: 95, pop: 32, army: 27, navy: 1, tech: 0.55,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["FRA","SEN","GHA","MAR"], rivals: ["BFA"] },
+  MLI: { name: "Mali", color: "#bcbc42", capital: "Bamako", capitalLonLat: [-8.0, 12.64], gdp: 23, pop: 24.5, army: 40, navy: 0, tech: 0.45,
+         gov: "junta wojskowa", ideology: "autorytaryzm", friends: ["RUS","BFA","NER","GIN"], rivals: ["FRA","DZA","CIV"] },
+  BFA: { name: "Burkina Faso", color: "#bc427f", capital: "Centre", capitalLonLat: [-1.52, 12.37], gdp: 24, pop: 24, army: 12, navy: 0, tech: 0.45,
+         gov: "junta wojskowa", ideology: "autorytaryzm", friends: ["RUS","MLI","NER","GIN"], rivals: ["FRA","CIV"] },
+  NER: { name: "Niger", color: "#42bca4", capital: "Niamey", capitalLonLat: [2.11, 13.51], gdp: 21, pop: 28, army: 33, navy: 0, tech: 0.45,
+         gov: "junta wojskowa", ideology: "autorytaryzm", friends: ["RUS","MLI","BFA","TUR"], rivals: ["FRA","BEN"] },
+  GHA: { name: "Ghana", color: "#bc9742", capital: "Greater Accra", capitalLonLat: [-0.19, 5.60], gdp: 88, pop: 35, army: 16, navy: 1, tech: 0.55,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["NGA","CIV","TGO","GBR"], rivals: [] },
+  TGO: { name: "Togo", color: "#42bcbc", capital: "Maritime", capitalLonLat: [1.23, 6.13], gdp: 11, pop: 9.5, army: 9, navy: 0, tech: 0.45,
+         gov: "republika parlamentarna", ideology: "autorytaryzm", friends: ["GHA","BEN"], rivals: [] },
+  BEN: { name: "Benin", color: "#42bc42", capital: "Ouémé", capitalLonLat: [2.63, 6.50], gdp: 23, pop: 14.5, army: 12, navy: 0, tech: 0.45,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["NGA","TGO","FRA"], rivals: ["NER"] },
+  NGA: { name: "Nigeria", color: "#425abc", capital: "Federal Capital Territory", capitalLonLat: [7.49, 9.06], gdp: 310, pop: 236, army: 143, navy: 5, tech: 0.65,
+         gov: "republika federalna (prezydencka)", ideology: "demokracja", friends: ["GHA","BEN","CMR","GBR"], rivals: [] },
+  CPV: { name: "Republika Zielonego Przylądka", color: "#c9a187", capital: "Santiago", capitalLonLat: [-23.51, 14.93], gdp: 3, pop: 0.53, army: 1, navy: 0, tech: 0.50,
+         gov: "republika parlamentarna", ideology: "demokracja", friends: ["PRT","SEN"], rivals: [] },
+  // ---------------- Afryka Środkowa ----------------
+  CMR: { name: "Kamerun", color: "#87bcc9", capital: "Centre", capitalLonLat: [11.52, 3.87], gdp: 55, pop: 30, army: 25, navy: 1, tech: 0.50,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["FRA","NGA","TCD","GAB"], rivals: [] },
+  TCD: { name: "Czad", color: "#bc4273", capital: "Ville de N'Djamena", capitalLonLat: [15.04, 12.13], gdp: 19, pop: 20.3, army: 33, navy: 0, tech: 0.50,
+         gov: "republika prezydencka (władza wojskowa)", ideology: "autorytaryzm", friends: ["ARE","CMR","NER"], rivals: ["SDN"] },
+  CAF: { name: "Republika Środkowoafrykańska", color: "#5a42bc", capital: "Bangui", capitalLonLat: [18.56, 4.36], gdp: 3, pop: 5.6, army: 9, navy: 0, tech: 0.40,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["RUS","RWA"], rivals: [] },
+  GNQ: { name: "Gwinea Równikowa", color: "#42bc5a", capital: "Bioko Norte", capitalLonLat: [8.78, 3.75], gdp: 13, pop: 1.9, army: 1.5, navy: 0, tech: 0.45,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["CMR"], rivals: ["GAB"] },
+  GAB: { name: "Gabon", color: "#9d5543", capital: "Estuaire", capitalLonLat: [9.45, 0.39], gdp: 22, pop: 2.5, army: 5, navy: 0, tech: 0.50,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["FRA","CMR"], rivals: ["GNQ"] },
+  COG: { name: "Kongo", color: "#439d43", capital: "Brazzaville", capitalLonLat: [15.27, -4.27], gdp: 16, pop: 6.5, army: 10, navy: 0, tech: 0.45,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["COD","AGO","RUS"], rivals: [] },
+  COD: { name: "DR Konga", color: "#bc4242", capital: "Kinshasa City", capitalLonLat: [15.31, -4.32], gdp: 80, pop: 112, army: 135, navy: 1, tech: 0.45,
+         gov: "republika semiprezydencka", ideology: "autorytaryzm", friends: ["AGO","BDI","ZAF","COG"], rivals: ["RWA","UGA"] },
+  STP: { name: "Wyspy Świętego Tomasza i Książęca", color: "#799d43", capital: "Água Grande", capitalLonLat: [6.73, 0.34], gdp: 0.8, pop: 0.24, army: 0.5, navy: 0, tech: 0.40,
+         gov: "republika semiprezydencka", ideology: "demokracja", friends: ["PRT","AGO"], rivals: [] },
+  AGO: { name: "Angola", color: "#8b42bc", capital: "Luanda", capitalLonLat: [13.23, -8.84], gdp: 90, pop: 39, army: 107, navy: 2, tech: 0.55,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["COD","CHN","ZAF","NAM"], rivals: [] },
+  // ---------------- Afryka Wschodnia i Róg Afryki ----------------
+  ETH: { name: "Etiopia", color: "#82439d", capital: "Addis Ababa", capitalLonLat: [38.74, 9.03], gdp: 140, pop: 135, army: 162, navy: 0, tech: 0.55,
+         gov: "republika federalna (parlamentarna)", ideology: "autorytaryzm", friends: ["DJI","KEN","ARE","CHN"], rivals: ["ERI","EGY","SOM"] },
+  ERI: { name: "Erytrea", color: "#42bc73", capital: "Maekel", capitalLonLat: [38.93, 15.32], gdp: 2.5, pop: 3.8, army: 200, navy: 1, tech: 0.40,
+         gov: "republika jednopartyjna", ideology: "autorytaryzm", friends: ["EGY","SDN","SOM"], rivals: ["ETH"] },
+  DJI: { name: "Dżibuti", color: "#bcb042", capital: "Djibouti", capitalLonLat: [43.15, 11.59], gdp: 4.5, pop: 1.2, army: 8, navy: 0, tech: 0.50,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["ETH","FRA","CHN"], rivals: [] },
+  SOM: { name: "Somalia", color: "#42bc8b", capital: "Banaadir", capitalLonLat: [45.32, 2.05], gdp: 13, pop: 19.7, army: 15, navy: 0, tech: 0.40,
+         gov: "republika federalna", ideology: "autorytaryzm", friends: ["TUR","EGY","QAT","ERI"], rivals: ["ETH"] },
+  KEN: { name: "Kenia", color: "#4297bc", capital: "Nairobi", capitalLonLat: [36.82, -1.29], gdp: 135, pop: 57.5, army: 24, navy: 1, tech: 0.60,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["UGA","TZA","ETH","GBR"], rivals: [] },
+  UGA: { name: "Uganda", color: "#c066c0", capital: "Kampala", capitalLonLat: [32.58, 0.35], gdp: 60, pop: 51, army: 45, navy: 0, tech: 0.50,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["SDS","KEN","RWA"], rivals: ["COD"] },
+  RWA: { name: "Rwanda", color: "#43799d", capital: "Kigali City", capitalLonLat: [30.06, -1.95], gdp: 15, pop: 14.6, army: 33, navy: 0, tech: 0.60,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["UGA","MOZ","CAF"], rivals: ["COD","BDI"] },
+  BDI: { name: "Burundi", color: "#a442bc", capital: "Gitega", capitalLonLat: [29.93, -3.43], gdp: 3, pop: 14.4, army: 30, navy: 0, tech: 0.40,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["COD","TZA"], rivals: ["RWA"] },
+  TZA: { name: "Tanzania", color: "#c9bc87", capital: "Dodoma", capitalLonLat: [35.74, -6.17], gdp: 90, pop: 70, army: 27, navy: 1, tech: 0.50,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["KEN","MOZ","BDI","CHN"], rivals: [] },
+  SYC: { name: "Seszele", color: "#c987a8", capital: "English River", capitalLonLat: [55.45, -4.62], gdp: 2.3, pop: 0.13, army: 0.4, navy: 0, tech: 0.50,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["IND","FRA","MUS"], rivals: [] },
+  MUS: { name: "Mauritius", color: "#aec066", capital: "Port Louis", capitalLonLat: [57.50, -20.16], gdp: 16, pop: 1.26, army: 1, navy: 0, tech: 0.50,
+         gov: "republika parlamentarna", ideology: "demokracja", friends: ["IND","FRA","SYC"], rivals: [] },
+  COM: { name: "Komory", color: "#9d438b", capital: "Grande Comore", capitalLonLat: [43.26, -11.70], gdp: 1.6, pop: 0.9, army: 0.5, navy: 0, tech: 0.40,
+         gov: "republika federalna (prezydencka)", ideology: "autorytaryzm", friends: ["FRA"], rivals: [] },
+  MDG: { name: "Madagaskar", color: "#87a1c9", capital: "Antananarivo", capitalLonLat: [47.52, -18.91], gdp: 18, pop: 32.7, army: 13.5, navy: 0, tech: 0.40,
+         gov: "junta wojskowa", ideology: "autorytaryzm", friends: ["FRA","MUS"], rivals: [] },
+  // ---------------- Afryka Południowa ----------------
+  ZMB: { name: "Zambia", color: "#428bbc", capital: "Lusaka", capitalLonLat: [28.28, -15.42], gdp: 28, pop: 21.9, army: 15, navy: 0, tech: 0.45,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["ZWE","MWI","TZA"], rivals: [] },
+  MWI: { name: "Malawi", color: "#6742bc", capital: "Lilongwe", capitalLonLat: [33.79, -13.96], gdp: 13, pop: 22, army: 10.7, navy: 0, tech: 0.40,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["ZMB","TZA","MOZ"], rivals: [] },
+  MOZ: { name: "Mozambik", color: "#9d435e", capital: "Maputo", capitalLonLat: [32.59, -25.97], gdp: 24, pop: 35.6, army: 11, navy: 0, tech: 0.40,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["RWA","ZAF","TZA"], rivals: [] },
+  ZWE: { name: "Zimbabwe", color: "#7342bc", capital: "Harare", capitalLonLat: [31.05, -17.83], gdp: 35, pop: 17, army: 29, navy: 0, tech: 0.45,
+         gov: "republika prezydencka", ideology: "autorytaryzm", friends: ["CHN","RUS","ZAF","ZMB"], rivals: [] },
+  BWA: { name: "Botswana", color: "#c0669c", capital: "South-East", capitalLonLat: [25.91, -24.65], gdp: 20, pop: 2.6, army: 9, navy: 0, tech: 0.55,
+         gov: "republika parlamentarna", ideology: "demokracja", friends: ["ZAF","NAM","ZMB"], rivals: [] },
+  NAM: { name: "Namibia", color: "#bc6742", capital: "Khomas", capitalLonLat: [17.08, -22.56], gdp: 14, pop: 3.1, army: 9.9, navy: 0, tech: 0.50,
+         gov: "republika prezydencka", ideology: "demokracja", friends: ["ZAF","AGO","BWA"], rivals: [] },
+  ZAF: { name: "RPA", color: "#8dc987", capital: "Gauteng", capitalLonLat: [28.19, -25.75], gdp: 430, pop: 64, army: 74, navy: 3, tech: 0.80,
+         gov: "republika parlamentarna", ideology: "demokracja", friends: ["NAM","BWA","MOZ","AGO","CHN","IND"], rivals: ["ISR"] },
+  LSO: { name: "Lesotho", color: "#878dc9", capital: "Maseru", capitalLonLat: [27.48, -29.31], gdp: 2.3, pop: 2.4, army: 2, navy: 0, tech: 0.40,
+         gov: "monarchia konstytucyjna", ideology: "demokracja", friends: ["ZAF"], rivals: [] },
+  SWZ: { name: "Eswatini", color: "#424ebc", capital: "Hhohho", capitalLonLat: [31.14, -26.31], gdp: 5, pop: 1.25, army: 3, navy: 0, tech: 0.40,
+         gov: "monarchia absolutna", ideology: "monarchia", friends: ["ZAF","TWN"], rivals: [] }
 };
 
 /*
@@ -240,7 +353,10 @@ window.COUNTRY_ALIASES = {
   KAS: "IND",                                          // Lodowiec Siachen
   GIB: "GBR", JEY: "GBR", GGY: "GBR", IMN: "GBR",      // Gibraltar, Jersey, Guernsey, Wyspa Man
   ALD: "FIN",                                          // Wyspy Alandzkie
-  FRO: "DNK"                                           // Wyspy Owcze
+  FRO: "DNK",                                          // Wyspy Owcze
+  SAH: "MAR",                                          // Sahara Zachodnia (de facto Maroko)
+  SOL: "SOM",                                          // Somaliland
+  BRT: "EGY"                                           // Bir Tawil
 };
 
 // Trwające wojny 1.01.2026 (włączane opcją "Trwające konflikty 2026" w menu).

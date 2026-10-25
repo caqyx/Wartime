@@ -65,7 +65,7 @@ WT.state = (function () {
 
   function createProvinces(g) {
     var provs = M().provinces;
-    for (var i = 0; i < provs.length; i++) {
+    for (var i = g.provinces.length; i < provs.length; i++) {
       g.provinces.push({
         owner: provs[i].cc, ctrl: provs[i].cc,
         buildings: { factory: 0, fort: 0, port: 0, barracks: 0, aa: 0, radar: 0, university: 0 },
@@ -78,6 +78,30 @@ WT.state = (function () {
     var pops = {}, provs = M().provinces;
     for (var i = 0; i < provs.length; i++) pops[provs[i].cc] = (pops[provs[i].cc] || 0) + (provs[i].pop || 0);
     return pops;
+  }
+
+  /**
+   * Rozszerzenie zapisanej gry o prowincje dopisane później na końcu mapy (np. Afryka):
+   * nowe prowincje i państwa startują jak w nowej grze, stan istniejących zostaje bez zmian.
+   * Zwraca listę dodanych państw.
+   */
+  function extendWorld(g) {
+    if (g.provinces.length >= M().provinces.length) return [];
+    createProvinces(g);
+    var pops = collectCountryPops(), data = U.countryData();
+    var added = Object.keys(pops).filter(function (cc) { return !g.countries[cc]; }).sort();
+    added.forEach(function (cc) { g.countries[cc] = makeCountry(cc, data[cc], pops[cc]); });
+    if (WT.tech) WT.tech.ensureAll();
+    buildStaticGraphs();
+    rebuildIndex();
+    assignCapitals(g, added);
+    distributeGdp(g, added);
+    createInitialRelations(g, added);
+    placeStartingForts(g, added);
+    placeStartingArmies(g, added);
+    placeStartingFleets(g, added);
+    if (added.length) addLog('Świat rozszerzony: ' + added.length + ' nowych państw (Afryka).', g.player);
+    return added;
   }
 
   function createCountries(g) {
@@ -113,8 +137,10 @@ WT.state = (function () {
     };
   }
 
-  function assignCapitals(g) {
-    Object.keys(g.countries).forEach(function (cc) { g.countries[cc].capital = findCapital(g.countries[cc]); });
+  function allCc(g, ccs) { return ccs || Object.keys(g.countries); }
+
+  function assignCapitals(g, ccs) {
+    allCc(g, ccs).forEach(function (cc) { g.countries[cc].capital = findCapital(g.countries[cc]); });
   }
 
   function findCapital(c) {
@@ -141,8 +167,8 @@ WT.state = (function () {
   }
 
   // PKB kraju rozkładany na prowincje wg populacji (stolica z premią 1.5×).
-  function distributeGdp(g) {
-    Object.keys(g.countries).forEach(function (cc) {
+  function distributeGdp(g, ccs) {
+    allCc(g, ccs).forEach(function (cc) {
       var c = g.countries[cc], own = idx.byOwner[cc] || [];
       var weights = own.map(function (id) {
         var w = (M().provinces[id].pop || 0) + 0.01;
@@ -154,13 +180,13 @@ WT.state = (function () {
     });
   }
 
-  function createInitialRelations(g) {
-    Object.keys(g.countries).forEach(function (cc) {
+  function createInitialRelations(g, ccs) {
+    allCc(g, ccs).forEach(function (cc) {
       var c = g.countries[cc];
       c.friends.forEach(function (o) { if (g.countries[o]) mergeRelation(g, cc, o, U.randInt(40, 70)); });
       c.rivals.forEach(function (o) { if (g.countries[o]) mergeRelation(g, cc, o, -U.randInt(40, 80)); });
     });
-    Object.keys(g.countries).forEach(function (cc) {
+    allCc(g, ccs).forEach(function (cc) {
       countryNeighbors(cc).forEach(function (o) {
         var k = U.key(cc, o);
         if (g.rel[k] == null) g.rel[k] = U.randInt(-10, 15) + (g.countries[cc].ideology === g.countries[o].ideology ? 10 : 0);
@@ -175,8 +201,8 @@ WT.state = (function () {
 
   // ---------- Armie startowe: 50% w stolicy, reszta na granicach z rywalami / w największych prowincjach ----------
 
-  function placeStartingArmies(g) {
-    Object.keys(g.countries).forEach(function (cc) {
+  function placeStartingArmies(g, ccs) {
+    allCc(g, ccs).forEach(function (cc) {
       var c = g.countries[cc];
       if (c.capital < 0 || c.baseArmy < 1000) return;
       var chunks = splitStartingArmy(c);
@@ -212,8 +238,8 @@ WT.state = (function () {
 
   // ---------- Forty startowe: stolice (poz. 1); linia frontu wojen startowych — umocnienia ----------
 
-  function placeStartingForts(g) {
-    Object.keys(g.countries).forEach(function (cc) {
+  function placeStartingForts(g, ccs) {
+    allCc(g, ccs).forEach(function (cc) {
       var cap = g.countries[cc].capital;
       if (cap >= 0) g.provinces[cap].buildings.fort = 1;
     });
@@ -234,8 +260,8 @@ WT.state = (function () {
 
   // ---------- Floty startowe wg `navy` (duże marynarki dzielone na 2 bazy) ----------
 
-  function placeStartingFleets(g) {
-    Object.keys(g.countries).forEach(function (cc) {
+  function placeStartingFleets(g, ccs) {
+    allCc(g, ccs).forEach(function (cc) {
       var c = g.countries[cc];
       if (c.navy <= 0) return;
       var coastal = (idx.byOwner[cc] || []).filter(function (id) { return M().provinces[id].coastal && idx.seaAdj[id].length; });
@@ -492,7 +518,7 @@ WT.state = (function () {
     createArmy: createArmy, removeArmy: removeArmy, moveArmy: moveArmy,
     embarkArmy: embarkArmy, disembarkArmy: disembarkArmy,
     createFleet: createFleet, removeFleet: removeFleet, moveFleet: moveFleet,
-    findCapital: findCapital, addLog: addLog, involvesPlayer: involvesPlayer, settings: settings
+    findCapital: findCapital, addLog: addLog, extendWorld: extendWorld, involvesPlayer: involvesPlayer, settings: settings
   };
 })();
 

@@ -41,10 +41,11 @@ WT.save = (function () {
   function applyState(g) {
     if (!g || !g.countries || !g.provinces || !Array.isArray(g.provinces)) return false;
     var map = WT.util.mapData();
-    if (map && map.provinces.length !== g.provinces.length) return false;
+    if (map && map.provinces.length < g.provinces.length) return false;   // zapis z nowszej mapy
     WT.G = g;
     migrateBuilds(g);
     WT.state.rebuildIndex();
+    if (map && map.provinces.length > g.provinces.length) WT.state.extendWorld(g);   // np. dopisana Afryka
     if (WT.tech) WT.tech.ensureAll();     // zapisy sprzed nauki: budżet, punkty, drzewko
     if (WT.military && WT.military.mergeAll) WT.military.mergeAll();   // stare zapisy: scal stojące armie
     return true;
