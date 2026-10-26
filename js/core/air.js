@@ -39,11 +39,12 @@ WT.air = (function () {
   // Budowa i utrzymanie
   // =====================================================================
 
-  function planeCost(cc, n) { return U.round(n * PLANE_COST * Math.max(0.5, E().costScale(cc)) * (WT.tech ? WT.tech.mod(cc, 'planeCost') : 1), 2); }
+  function planeCost(cc, n) { return U.round(n * PLANE_COST * Math.max(0.5, E().costScale(cc)) * E().priceScale() * (WT.tech ? WT.tech.mod(cc, 'planeCost') : 1), 2); }
   function speedKm(cc) { return SPEED_KM * (WT.tech && cc ? WT.tech.mod(cc, 'bomberSpeed') : 1); }
 
   function canBuildBombers(cc, provId, n) {
     var p = G().provinces[provId];
+    if (!S.era('air')) return { ok: false, reason: 'Lotnictwo niedostępne w tej epoce.' };
     if (!(n >= 1)) return { ok: false, reason: 'Podaj liczbę bombowców.' };
     if (n > MAX_BUILD) return { ok: false, reason: 'Maks. ' + MAX_BUILD + ' bombowców naraz.' };
     if (!p || p.owner !== cc || p.ctrl !== cc) return { ok: false, reason: 'Lotnisko musi być we własnej, niekontrolowanej przez wroga prowincji.' };

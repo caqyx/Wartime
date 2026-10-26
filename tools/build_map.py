@@ -22,7 +22,7 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra, connected_components
 import shapely
-from shapely.geometry import shape, Polygon, MultiPolygon, Point, box, LineString
+from shapely.geometry import shape, Polygon, MultiPolygon, MultiPoint, Point, box, LineString
 from shapely.ops import unary_union, nearest_points, polylabel
 from shapely.strtree import STRtree
 
@@ -532,6 +532,7 @@ def main():
     print("Suez link:", provinces[c_med]["cc"], provinces[c_med]["name"], "<->",
           provinces[c_red]["cc"], provinces[c_red]["name"])
     sea = build_sea_links(coast_ids, ports, land_filled, land_eroded, provinces, canal=(c_med, c_red))
+    seas = build_sea_zones(land_filled, final_geoms, coastal)
 
     # ---- population
 
@@ -558,6 +559,7 @@ def main():
             "port": list(ports[i]) if ports[i] else None,
             "nb": sorted(nb[i]),
             "terrain": terrain_for(provinces[i]["cc"], float(lon), float(lat)),
+            "ct": continent_for(a0props, provinces[i], float(lon), float(lat)),
         })
 
     bg_rings = []
@@ -584,6 +586,7 @@ def main():
         "seaLinks": sea,
         "straits": sorted([list(s) for s in straits]),
         "background": bg_rings,
+        "seas": seas,
         "countries": countries,
     }
     data = keep_old_ids(data)
@@ -596,6 +599,142 @@ def main():
     report(data, merge_log, enclaves)
     if want_preview:
         render_preview(data)
+
+
+CONTINENT_CODE = {"Europe": "EU", "Asia": "AS", "Africa": "AF"}
+CT_OVERRIDE = {"MDV": "AS", "MUS": "AF", "SYC": "AF"}
+
+
+def continent_for(a0props, prov, lon, lat):
+    """Kontynent geograficzny prowincji (do wyłączania kontynentów w grze): EU / AS / AF."""
+    cc = prov["cc"]
+    if cc == "RUS":
+        return "AS" if lon >= 60 else "EU"
+    if cc == "TUR":
+        return "EU" if lon < 29.6 and lat > 40.6 else "AS"
+    if cc == "EGY" and lon > 32.4 and lat > 27.7:
+        return "AS"                                   # Synaj
+    if cc == "KAZ" and lon < 51.5:
+        return "EU"
+    if cc in CT_OVERRIDE:
+        return CT_OVERRIDE[cc]
+    return CONTINENT_CODE.get(a0props[cc]["CONTINENT"], "AS")
+
+
+SEA_NEAR_KM, SEA_FAR_KM, SEA_COAST_BAND_KM = 300, 650, 450
+
+
+def build_sea_zones(land_filled, final_geoms, coastal):
+    """Strefy morskie (prowincje wodne): komórki Voronoi na wodzie — gęściej przy brzegach, rzadziej na
+    otwartym oceanie. Każda strefa: nazwa akwenu (Natural Earth, po polsku), obrys, punkt środkowy,
+    sąsiednie strefy (nb) i prowincje lądowe na jej wybrzeżu (coast)."""
+    km = 111.32 * math.cos(math.radians(45)) / S
+    near, far, band = SEA_NEAR_KM / km, SEA_FAR_KM / km, SEA_COAST_BAND_KM / km
+    frame = box(0, 0, WIDTH, HEIGHT)
+    water = frame.difference(land_filled).buffer(0)
+    shapely.prepare(water)
+
+    def hex_grid(step):
+        pts, row, y = [], 0, step / 2
+        while y < HEIGHT:
+            x = step / 2 + (step / 2 if row % 2 else 0)
+            while x < WIDTH:
+                pts.append((x, y)); x += step
+            y += step * 0.866; row += 1
+        return np.array(pts)
+
+    seeds = []
+    for step, keep in ((near, lambda d: d <= band), (far, lambda d: d > band)):
+        pts = hex_grid(step)
+        geoms = shapely.points(pts)
+        inside = shapely.contains(water, geoms)
+        dist = shapely.distance(land_filled, geoms)
+        seeds += [tuple(pts[i]) for i in range(len(pts)) if inside[i] and keep(dist[i])]
+    # akweny bez zarodka (małe morza śródlądowe, wąskie zatoki)
+    tree = STRtree([Point(p) for p in seeds])
+    for comp in polys_of(water):
+        if comp.area > 400 and not len(tree.query(comp, predicate="contains")):
+            rp = comp.representative_point(); seeds.append((rp.x, rp.y))
+    print(f"sea zone seeds: {len(seeds)}")
+
+    cells = shapely.voronoi_polygons(MultiPoint(seeds), extend_to=frame)
+    zones, leftovers = [], []
+    seed_pts = [Point(p) for p in seeds]
+    for cell in shapely.get_parts(cells):
+        seed = next((sp for sp in seed_pts if cell.contains(sp)), None)
+        if seed is None:
+            continue
+        part = cell.intersection(water)
+        if part.is_empty:
+            continue
+        pieces = polys_of(part)
+        main = min(pieces, key=lambda q: q.distance(seed))
+        zones.append(main)
+        leftovers += [q for q in pieces if q is not main]
+    # odcięte kawałki (za półwyspem) dołącz do strefy, z którą mają najdłuższą granicę
+    ztree = STRtree(zones)
+    extra = []
+    for q in leftovers:
+        best, bl = None, 0.0
+        for j in ztree.query(q.buffer(0.5)):
+            l = q.buffer(0.5).intersection(zones[int(j)]).area
+            if l > bl: bl, best = l, int(j)
+        if best is not None:
+            zones[best] = zones[best].union(q)
+        elif q.area > 400:
+            extra.append(q)
+    zones = [z for z in zones + extra if z.area > 20]
+
+    names = sea_names(zones)
+    out = []
+    ztree = STRtree(zones)
+    for k, z in enumerate(zones):
+        nb = sorted(int(j) for j in ztree.query(z.buffer(0.6)) if int(j) != k and z.buffer(0.6).intersection(zones[int(j)]).area > 0.8)
+        lp = z.representative_point() if not z.centroid.within(z) else z.centroid
+        rings = []
+        for pz in polys_of(z.simplify(1.2, preserve_topology=True)):
+            cs = np.asarray(pz.exterior.coords)[:-1]
+            if len(cs) >= 3:
+                rings.append([round(float(v), 1) for v in cs.reshape(-1)])
+        out.append({"id": k, "name": names[k], "poly": rings, "cx": round(lp.x, 1), "cy": round(lp.y, 1), "nb": nb, "coast": []})
+    for i, g in enumerate(final_geoms):
+        if not coastal[i]:
+            continue
+        gb = g.buffer(2.5)
+        for j in ztree.query(gb, predicate="intersects"):
+            out[int(j)]["coast"].append(i)
+    for z in out:
+        z["coast"] = sorted(set(z["coast"]))
+    print(f"sea zones: {len(out)}, without coast: {sum(1 for z in out if not z['coast'])}, isolated: {sum(1 for z in out if not z['nb'] and not z['coast'])}")
+    return out
+
+
+def sea_names(zones):
+    """Nazwa akwenu dla każdej strefy: najmniejszy wielokąt morski NE zawierający jej punkt; numeracja przy powtórzeniach."""
+    marine = fetch("ne_10m_geography_marine_polys")
+    polys = []
+    for f in marine["features"]:
+        p = f["properties"]
+        nm = p.get("name_pl") or p.get("name")
+        if not nm:
+            continue
+        g = project_geom(shift_antimeridian(as_multi(shapely.make_valid(shape(f["geometry"])))))
+        polys.append((g.area, nm, g))
+    polys.sort(key=lambda t: t[0])
+    raw = []
+    for z in zones:
+        pt = z.representative_point()
+        nm = next((n for _, n, g in polys if g.contains(pt)), None)
+        if nm is None:
+            lon, _ = unproj_xy(pt.x, pt.y)
+            nm = "Ocean Atlantycki" if lon < 20 else ("Ocean Indyjski" if lon < 100 else "Ocean Spokojny")
+        raw.append(nm)
+    count, seen = Counter(raw), Counter()
+    out = []
+    for nm in raw:
+        seen[nm] += 1
+        out.append(f"{nm} {seen[nm]}" if count[nm] > 1 else nm)
+    return out
 
 
 def keep_old_ids(data, old_path=OUT):
@@ -631,6 +770,8 @@ def keep_old_ids(data, old_path=OUT):
         a, b = remap[a], remap[b]
         return (a, b) if a < b else (b, a)
     data["provinces"] = provs
+    for z in data.get("seas", []):
+        z["coast"] = sorted(remap[i] for i in z["coast"])
     data["seaLinks"] = sorted([list(pair(a, b)) + [d] for a, b, d in data["seaLinks"]])
     data["straits"] = sorted([list(pair(a, b)) for a, b in data["straits"]])
     print(f"keep_old_ids: {len(old)} prowincji zachowało numery, nowych: {len(provs) - len(old)}")

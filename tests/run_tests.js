@@ -739,6 +739,73 @@ test('stary zapis bez dopisanych prowincji (np. Afryki) rozszerza świat', funct
   assert(true, 'gra toczy się dalej');
 });
 
+test('kontynenty: wyłączone ziemie są poza grą i nieprzechodnie', function () {
+  freshGame({ player: 'AAA', continents: ['EU'] });
+  var V = WT.state.VOID;
+  eq(G().provinces[2].owner, V, 'prowincja BBB (Azja) poza grą');
+  eq(G().provinces[14].owner, V, 'prowincja CCC (Afryka) poza grą');
+  assert(G().countries.ISL && G().countries.ISL.alive, 'wyspa (Europa) w grze');
+  assert(!G().countries.BBB && !G().countries.CCC, 'brak państw z wyłączonych kontynentów');
+  assert(G().countries[V] && !G().countries[V].alive, 'pseudo-państwo martwe');
+  eq(WT.state.countriesAlive().indexOf(V), -1, 'nie liczy się jako państwo');
+  var a = WT.state.armiesOf('AAA')[0];
+  eq(WT.military.findPath(a, 2), null, 'nie da się wejść na ziemie poza grą');
+  eq(WT.diplomacy.declareWar('AAA', V).ok, false, 'nie da się wypowiedzieć wojny');
+  for (var i = 0; i < 10; i++) WT.turn.end();
+  eq(G().provinces[2].owner, V, 'po turach dalej poza grą');
+});
+
+test('scenariusz historyczny: granice, data, wojny, epoka', function () {
+  freshGame({ player: 'KRL', scenario: '1385', startWars: true });
+  eq(G().scenario, '1385', 'scenariusz zapisany');
+  assert(/1385/.test(WT.state.dateStr()), 'data 1385: ' + WT.state.dateStr());
+  eq(G().provinces[0].owner, 'KRL', 'AAA w królestwie');
+  eq(G().provinces[2].owner, 'KRL', 'BBB w królestwie');
+  assert(!G().countries.AAA && G().countries.KRL.name === 'Królestwo', 'państwa scenariusza');
+  assert(WT.diplomacy.atWar('KRL', 'CCC'), 'wojna startowa scenariusza');
+  var cap = G().countries.KRL.capital;
+  G().countries.KRL.treasury = 1000;
+  eq(WT.air.canBuildBombers('KRL', cap, 1).ok, false, 'brak lotnictwa w 1385');
+  eq(WT.economy.canBuild('KRL', cap, 'radar').ok, false, 'brak radaru w 1385');
+  assert(Math.abs(WT.state.provPop(0) - MAP_DATA.provinces[0].pop * 0.1) < 1e-9, 'ludność epoki przeskalowana');
+  eq(WT.economy.costScale('KRL'), 12.5, 'skala kosztów epoki');
+  for (var i = 0; i < 20; i++) WT.turn.end();
+  var g = JSON.parse(JSON.stringify(G()));
+  assert(WT.save.importJSON(JSON.stringify(g)) && G().scenario === '1385', 'zapis/wczytanie scenariusza');
+});
+
+test('strefy morskie: flota na morzu i ostrzał wskazanej prowincji w zasięgu', function () {
+  freshGame({ player: 'CCC' });
+  var SEA = WT.state.SEA_BASE;
+  assert(WT.naval.isNode(SEA) && WT.naval.isNode(SEA + 1), 'strefy są węzłami');
+  var f = WT.state.createFleet('CCC', 14, 2); f.gunships = 6;
+  var r = WT.naval.orderFleet(f.id, SEA);
+  assert(r.ok, 'rejs do strefy morskiej: ' + r.reason);
+  WT.naval.moveFleets();
+  eq(f.prov, SEA, 'flota w strefie');
+  eq(WT.state.nodeName(f.prov), 'Morze Północne', 'nazwa strefy');
+  eq(WT.naval.orderShell(f.id, 9).ok, false, 'bez wojny nie można');
+  WT.diplomacy.startWar(['CCC'], ['BBB'], true);
+  eq(WT.naval.orderShell(f.id, 0).ok, false, 'cel poza zasięgiem odrzucony');
+  var army = WT.state.createArmy('BBB', 9, 40000), dev0 = G().provinces[9].dev;
+  var o = WT.naval.orderShell(f.id, 9);
+  assert(o.ok, 'cel ostrzału w zasięgu: ' + o.reason);
+  WT.naval.shellAll();
+  assert(army.size < 40000 && G().provinces[9].dev < dev0, 'ostrzał z morza: wojsko i miasto osłabione');
+  WT.naval.shellAll();
+  assert(f.shellTarget === 9, 'cel utrzymany między turami');
+  // flota przechodzi przez strefę do drugiego portu
+  var r2 = WT.naval.orderFleet(f.id, 24);
+  assert(r2.ok, 'rejs ze strefy do portu');
+  for (var i = 0; i < 3; i++) WT.naval.moveFleets();
+  eq(f.prov, 24, 'flota w porcie');
+  // armia na okręcie w strefie zachowuje prowincję lądową
+  var t = WT.state.createFleet('CCC', 14, 3), a = WT.state.createArmy('CCC', 14, 5000);
+  t.cargo.push(a.id); a.embarked = t.id;
+  WT.naval.orderFleet(t.id, SEA); WT.naval.moveFleets();
+  eq(a.prov, 14, 'armia na pokładzie w strefie: ostatnia prowincja lądowa');
+});
+
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {
   freshGame({ player: 'AAA', god: true });
   var c = G().countries.AAA, t0 = c.treasury;

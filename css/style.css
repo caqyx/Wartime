@@ -616,9 +616,25 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
   cursor: pointer; user-select: none; color: var(--text-1); transition: background-color var(--dur-1);
 }
 .check:hover { background: var(--glass-fill-hover); }
+.check.disabled { opacity: 0.55; cursor: default; }
+.check.disabled:hover { background: none; }
 .check > span { flex: 1; }
 .check input { order: 2; }
 .check small { display: block; font-size: var(--fs-xs); color: var(--text-3); margin-top: 1px; }
+/* Wybór epoki i kontynentów (segmenty) */
+.start-setup { display: flex; flex-direction: column; gap: 6px; padding: var(--s-2) var(--s-3); border-radius: var(--r-md); background: var(--glass-fill); border: 1px solid var(--stroke-1); }
+.setup-row { display: flex; align-items: center; gap: var(--s-2); }
+.setup-lbl { width: 76px; flex: none; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); }
+.seg { flex: 1; display: flex; gap: 2px; padding: 2px; border-radius: var(--r-sm); background: rgba(3, 6, 12, 0.35); border: 1px solid var(--stroke-1); }
+.seg-btn {
+  flex: 1; min-width: 0; height: 28px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); font-weight: 600; color: var(--text-3); font-variant-numeric: tabular-nums;
+  transition: background-color var(--dur-1), color var(--dur-1);
+}
+.seg-btn:hover { color: var(--text-1); background: var(--glass-fill-hover); }
+.seg-btn.on { color: var(--acc-200); background: var(--acc-tint); box-shadow: inset 0 0 0 1px oklch(84% 0.14 205 / 0.4); }
+.seg-btn:focus-visible { outline: 2px solid var(--acc-400); outline-offset: 1px; }
+.scen-desc { margin: 0 0 2px; font-size: var(--fs-xs); line-height: 1.45; color: var(--text-3); }
 .start-actions { display: flex; gap: var(--s-2); }
 .start-actions .btn { flex: 1; justify-content: center; }
 .start-actions .btn-primary { flex: 1.4; }
@@ -888,3 +904,12 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .start-actions .btn:disabled, .start-actions .btn-primary:disabled {
   opacity: 1; background: #1a2533; color: var(--text-3); border-color: var(--stroke-1); box-shadow: none;
 }
+
+/* ---------- Strefy morskie i ostrzał z morza ---------- */
+.sea-dot { width: 14px; height: 14px; flex: none; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #8fc4ff, #2b5f9a); box-shadow: 0 0 0 1px rgba(143, 196, 255, 0.35), 0 0 10px rgba(80, 150, 230, 0.35); }
+.shell-box { margin-top: var(--s-2); padding: var(--s-2) 10px; border-radius: var(--r-sm); background: rgba(255, 150, 60, 0.07); border: 1px solid rgba(255, 170, 80, 0.28); }
+.shell-head { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-1); }
+.shell-head .ico { width: 14px; height: 14px; color: #ffb066; }
+.shell-head .dim { margin-left: auto; font-size: var(--fs-xs); }
+.shell-target { margin-top: 4px; font-size: var(--fs-sm); color: var(--text-2); }
+.shell-box .row-actions { margin-top: 6px; }

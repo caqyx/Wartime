@@ -16,6 +16,8 @@
   var IS_TOUCH = typeof window !== 'undefined' && (('ontouchstart' in window) || (navigator.maxTouchPoints || 0) > 0);
   var TOUCH_UNIT_TOL = 20;        // tolerancja trafienia markera armii/floty palcem (px CSS)
   var GRID_CELL = 64;             // komórka siatki przestrzennej (jednostki mapy)
+  var VOID = 'XXX';               // ląd wyłączonych kontynentów (poza grą) — rysowany jak tło
+  var SEA_BASE = 100000;          // id stref morskich = SEA_BASE + indeks w MAP.seas
   // Paleta mapy zgodna z tokenami css/style.css (akcent = neonowy cyjan, semantyka: wojna/sojusz/sukces/ostrzeżenie)
   var COLORS = {
     sea: '#0b1a2b', seaTop: '#0d2034', seaBottom: '#091523', seaDeep: '#060d17', grid: 'rgba(140,205,235,0.075)',
@@ -45,6 +47,7 @@
   var tiles = new Map();           // key -> { canvas, ver }
   var world = null;                // { canvas, scale, ver }
   var provPaths = [], bgPath = null, spatial = null;
+  var seaPaths = [], seaBox = [];
   var ccIndex = {}, econRank = null;
   var countryLabels = [];
   var patterns = {};
@@ -57,6 +60,7 @@
   // Stan interakcji ustawiany przez WT.ui
   var view = {
     hoverProv: -1, selProv: -1, multi: null, airRange: null, radarRing: null,
+    hoverSea: -1, selSea: -1, shellRange: null,   // strefy morskie (id >= SEA_BASE), zasięg ostrzału {x,y,r}
     sel: null,                     // { type: 'army'|'fleet', id }
     preview: null,                 // plan trasy (podgląd)
     pending: null,                 // plan czekający na potwierdzenie w pasku rozkazu
@@ -71,6 +75,8 @@
   // ---------------------------------------------------------------------------
   function G() { return WT.G || null; }
   function ownerOf(id) { var g = G(); return g && g.provinces[id] ? g.provinces[id].owner : MAP.provinces[id].cc; }
+  function isVoid(id) { return ownerOf(id) === VOID; }
+  function isSeaId(id) { return id >= SEA_BASE; }
   function ctrlOf(id) { var g = G(); return g && g.provinces[id] ? (g.provinces[id].ctrl || g.provinces[id].owner) : MAP.provinces[id].cc; }
   function hashColor(cc) {
     var h = 0; for (var i = 0; i < cc.length; i++) h = (h * 31 + cc.charCodeAt(i)) >>> 0;
@@ -170,6 +176,7 @@
     return t < 0.5 ? mix('#262a4a', '#2c7d78', t * 2) : mix('#2c7d78', '#d6e06c', (t - 0.5) * 2);
   }
   function provinceFill(id) {
+    if (isVoid(id)) return COLORS.background;
     switch (mode) {
       case 'diplomatic': return diplomacyColor(id);
       case 'economic': return economyColor(id);
@@ -211,6 +218,13 @@
   function buildPaths() {
     provPaths = MAP.provinces.map(function (p) { return ringsToPath(p.poly || []); });
     bgPath = MAP.background && MAP.background.length ? ringsToPath(MAP.background) : null;
+    seaPaths = []; seaBox = [];
+    (MAP.seas || []).forEach(function (z) {
+      seaPaths.push(ringsToPath(z.poly || []));
+      var b = [1e9, 1e9, -1e9, -1e9];
+      (z.poly || []).forEach(function (r) { for (var i = 0; i < r.length; i += 2) { if (r[i] < b[0]) b[0] = r[i]; if (r[i] > b[2]) b[2] = r[i]; if (r[i + 1] < b[1]) b[1] = r[i + 1]; if (r[i + 1] > b[3]) b[3] = r[i + 1]; } });
+      seaBox.push(b);
+    });
   }
   function buildSpatialGrid() {
     var cols = Math.ceil(MAP.width / GRID_CELL) + 1, rows = Math.ceil(MAP.height / GRID_CELL) + 1;
@@ -253,11 +267,24 @@
     for (var i = 0; i < cell.length; i++) {
       var id = cell[i], p = MAP.provinces[id], b = p.bbox;
       if (mx < b[0] || mx > b[2] || my < b[1] || my > b[3]) continue;
-      if (p.areaKm2 < bestArea && pickCtx.isPointInPath(provPaths[id], mx, my)) { best = id; bestArea = p.areaKm2; }
+      if (p.areaKm2 < bestArea && !isVoid(id) && pickCtx.isPointInPath(provPaths[id], mx, my)) { best = id; bestArea = p.areaKm2; }
     }
     return best;
   }
   R.pickProvince = pickProvince;
+  // Strefa morska pod punktem mapy → id węzła (SEA_BASE + k) albo -1
+  function pickSea(mx, my) {
+    for (var k = 0; k < seaPaths.length; k++) {
+      var b = seaBox[k];
+      if (mx < b[0] || mx > b[2] || my < b[1] || my > b[3]) continue;
+      if (pickCtx.isPointInPath(seaPaths[k], mx, my)) return SEA_BASE + k;
+    }
+    return -1;
+  }
+  R.pickSea = pickSea;
+  function seaAt(prov, mx, my) { return prov >= 0 ? -1 : pickSea(mx, my); }
+  function nodePath(id) { return isSeaId(id) ? seaPaths[id - SEA_BASE] : provPaths[id]; }
+  R.nodePath = nodePath;
 
   // Floty rysowane są nad armiami, więc mają pierwszeństwo przy wskazywaniu.
   // tol > 0 (dotyk): gdy nic nie trafiono dokładnie, wybierz najbliższy marker w promieniu tol px.
@@ -387,7 +414,7 @@
   // ---------------------------------------------------------------------------
   function computeCountryLabels() {
     var groups = {};
-    for (var i = 0; i < MAP.provinces.length; i++) { var cc = ownerOf(i); (groups[cc] || (groups[cc] = [])).push(i); }
+    for (var i = 0; i < MAP.provinces.length; i++) { var cc = ownerOf(i); if (cc !== VOID) (groups[cc] || (groups[cc] = [])).push(i); }
     countryLabels = [];
     Object.keys(groups).forEach(function (cc) {
       var comp = largestComponent(groups[cc], cc);
@@ -448,6 +475,7 @@
     sea.addColorStop(0, COLORS.seaTop); sea.addColorStop(0.55, COLORS.sea); sea.addColorStop(1, COLORS.seaBottom);
     g.fillStyle = sea; g.fillRect(x0, y0, x1 - x0, y1 - y0);
     drawGraticule(g, x0, y0, x1, y1, scale);
+    drawSeaZones(g, x0, y0, x1, y1, scale);
     drawBackgroundLand(g, scale);
     var ids = queryRect(x0, y0, x1, y1);
     fillProvinces(g, ids, scale);
@@ -495,7 +523,7 @@
     var m = new DOMMatrix([1 / scale, 0, 0, 1 / scale, 0, 0]);
     for (var i = 0; i < ids.length; i++) {
       var id = ids[i], ctrl = ctrlOf(id);
-      if (ctrl === ownerOf(id)) continue;
+      if (ctrl === ownerOf(id) || ctrl === VOID) continue;
       var pat = stripePattern(g, countryColor(ctrl));
       if (pat.setTransform) pat.setTransform(m);
       g.fillStyle = pat; g.fill(provPaths[id]);
@@ -507,7 +535,22 @@
     if (alpha < 0.02) return;
     g.strokeStyle = 'rgba(235,245,255,' + alpha.toFixed(3) + ')';
     g.lineWidth = Math.min(1.1, 0.5 + scale * 0.08) / scale;
-    for (var i = 0; i < ids.length; i++) g.stroke(provPaths[ids[i]]);
+    for (var i = 0; i < ids.length; i++) if (!isVoid(ids[i])) g.stroke(provPaths[ids[i]]);
+  }
+  // Strefy morskie: delikatne linie podziału morza (pod lądem) — widoczne od średniego zoomu
+  function drawSeaZones(g, x0, y0, x1, y1, scale) {
+    if (!seaPaths.length) return;
+    var alpha = Math.max(0, Math.min(0.16, (scale - 0.35) * 0.12));
+    if (alpha < 0.02) return;
+    g.strokeStyle = 'rgba(150,200,240,' + alpha.toFixed(3) + ')';
+    g.lineWidth = 0.8 / scale; g.lineJoin = 'round';
+    g.setLineDash([4 / scale, 3 / scale]);
+    for (var k = 0; k < seaPaths.length; k++) {
+      var b = seaBox[k];
+      if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) continue;
+      g.stroke(seaPaths[k]);
+    }
+    g.setLineDash([]);
   }
 
   // Granice państw: raster ID państw + wykrywanie krawędzi (niezależne od topologii danych).
@@ -522,7 +565,7 @@
     ic.lineWidth = 0.9 / scale;
     if (bgPath) { ic.fillStyle = idColor(511); ic.fill(bgPath); }   // ląd poza grą = osobne "państwo" (brzeg, nie poświata morza)
     for (var i = 0; i < ids.length; i++) {
-      var c = idColor(ccIndex[ownerOf(ids[i])] || 0);
+      var c = isVoid(ids[i]) ? idColor(511) : idColor(ccIndex[ownerOf(ids[i])] || 0);
       ic.fillStyle = c; ic.strokeStyle = c; ic.fill(provPaths[ids[i]]); ic.stroke(provPaths[ids[i]]);
     }
     var src = new Uint32Array(ic.getImageData(0, 0, W, H).data.buffer);
@@ -662,6 +705,7 @@
       ctx.strokeStyle = COLORS.hoverEdge; ctx.lineWidth = 1.1 * lw; ctx.stroke(provPaths[view.hoverProv]);
     }
     if (view.multi && view.multi.length) drawMultiSelection(lw);
+    drawSeaHighlight(lw);
     if (view.selProv >= 0) {
       // zaznaczenie: statyczna poświata akcentu (szeroki półprzezroczysty obrys + ostra linia), bez animacji
       var sp = provPaths[view.selProv];
@@ -672,11 +716,25 @@
       ctx.strokeStyle = COLORS.select; ctx.lineWidth = 1.8 * lw; ctx.stroke(sp);
     }
     var target = view.pending ? view.pending.target : (view.preview ? view.preview.target : -1);
-    if (target >= 0) {
+    if (target >= 0 && nodePath(target)) {
       var ok = view.pending ? view.pending.ok !== false : (view.preview && view.preview.ok);
       var rgb = ok ? (((view.pending || view.preview).kind === 'land') ? COLORS.accentRgb : '143,168,255') : '255,107,107';
-      ctx.fillStyle = 'rgba(' + rgb + ',0.20)'; ctx.fill(provPaths[target]);
-      ctx.strokeStyle = 'rgba(' + rgb + ',0.85)'; ctx.lineWidth = 1.4 * lw; ctx.stroke(provPaths[target]);
+      ctx.fillStyle = 'rgba(' + rgb + ',0.20)'; ctx.fill(nodePath(target));
+      ctx.strokeStyle = 'rgba(' + rgb + ',0.85)'; ctx.lineWidth = 1.4 * lw; ctx.stroke(nodePath(target));
+    }
+  }
+  function drawSeaHighlight(lw) {
+    var h = view.hoverSea, s = view.selSea;
+    if (h >= SEA_BASE && h !== s && seaPaths[h - SEA_BASE]) {
+      ctx.fillStyle = 'rgba(143,190,255,0.10)'; ctx.fill(seaPaths[h - SEA_BASE]);
+      ctx.strokeStyle = 'rgba(170,210,255,0.6)'; ctx.lineWidth = 1.1 * lw; ctx.stroke(seaPaths[h - SEA_BASE]);
+    }
+    if (s >= SEA_BASE && seaPaths[s - SEA_BASE]) {
+      var sp = seaPaths[s - SEA_BASE];
+      ctx.lineJoin = 'round';
+      ctx.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.10)'; ctx.fill(sp);
+      ctx.strokeStyle = COLORS.selectGlow; ctx.lineWidth = 4.5 * lw; ctx.stroke(sp);
+      ctx.strokeStyle = COLORS.select; ctx.lineWidth = 1.6 * lw; ctx.stroke(sp);
     }
   }
   // Zaznaczenie wielu prowincji (masowa budowa): wypełnienie akcentem + obrys
@@ -771,6 +829,26 @@
     setLetterSpacing(0);
   }
 
+  // Nazwy stref morskich (kursywa, chłodny błękit) — tylko przy dużym zoomie
+  function drawSeaLabels() {
+    if (cam.zoom < 1.2 || !MAP.seas) return;
+    applyScreenTransform();
+    var x0 = cam.x, y0 = cam.y, x1 = cam.x + viewW / cam.zoom, y1 = cam.y + viewH / cam.zoom;
+    var px = Math.min(12, 8.5 + cam.zoom * 0.5);
+    ctx.font = 'italic 500 ' + px.toFixed(1) + 'px ' + FONT_SANS;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+    ctx.globalAlpha = Math.min(1, (cam.zoom - 1.2) / 0.6);
+    for (var k = 0; k < MAP.seas.length; k++) {
+      var z = MAP.seas[k], b = seaBox[k];
+      if (z.cx < x0 || z.cx > x1 || z.cy < y0 || z.cy > y1) continue;
+      if ((b[2] - b[0]) * cam.zoom < 60) continue;
+      var s = mapToScreen(z.cx, z.cy);
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(6,10,16,0.55)'; ctx.strokeText(z.name, s[0], s[1] - 16);
+      ctx.fillStyle = 'rgba(160,200,240,0.8)'; ctx.fillText(z.name, s[0], s[1] - 16);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ---------------------------------------------------------------------------
   // Overlay: trasy — wygładzona linia przerywana, animowany przesuw kresek (tylko overlay), grot, etykieta-pigułka
   // ---------------------------------------------------------------------------
@@ -797,7 +875,10 @@
     }
   }
   function provPoint(id) { var p = MAP.provinces[id]; return [p.cx, p.cy]; }
-  function portPoint(id) { var p = MAP.provinces[id]; return p.port || [p.cx, p.cy]; }
+  function portPoint(id) {
+    if (isSeaId(id)) { var z = MAP.seas && MAP.seas[id - SEA_BASE]; return z ? [z.cx, z.cy] : [0, 0]; }
+    var p = MAP.provinces[id]; return p.port || [p.cx, p.cy];
+  }
   function landPoints(from, path) { var pts = [provPoint(from)]; path.forEach(function (id) { pts.push(provPoint(id)); }); return pts; }
   function seaPoints(from, path) { var pts = [portPoint(from)]; path.forEach(function (id) { pts.push(portPoint(id)); }); return pts; }
   R.landPoints = landPoints;
@@ -987,10 +1068,11 @@
     var me = g.player, byPort = {};
     for (var id in g.fleets) {
       var f = g.fleets[id];
-      if (f.prov == null || !MAP.provinces[f.prov]) continue;
+      if (f.prov == null || !(isSeaId(f.prov) ? MAP.seas && MAP.seas[f.prov - SEA_BASE] : MAP.provinces[f.prov])) continue;
       if (f.owner !== me && cam.zoom < 0.7) continue;
       (byPort[f.prov] || (byPort[f.prov] = [])).push(f);
     }
+    drawShellOrders(g, me);
     ctx.font = CHIP_FONT; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     Object.keys(byPort).forEach(function (pid) {
       var pt = portPoint(+pid), s = mapToScreen(pt[0], pt[1]);
@@ -1030,6 +1112,25 @@
       ctx.fillStyle = '#ffd2a6'; ctx.fillText(String(guns), gx + 15, y + h / 2 + 0.5);
     }
     hitFleets.push({ x: x, y: y, w: w, h: h, id: f.id, owner: f.owner, prov: f.prov });
+  }
+  // Ostrzał z morza: zasięg wybranej floty i linie flot do celów (moje + wrogie w zasięgu wzroku)
+  function drawShellOrders(g, me) {
+    if (view.shellRange) drawRangeCircle(view.shellRange, '255,150,60', true);
+    for (var id in g.fleets) {
+      var f = g.fleets[id];
+      if (f.shellTarget == null || !(f.gunships > 0) || !MAP.provinces[f.shellTarget]) continue;
+      var a = portPoint(f.prov), t = MAP.provinces[f.shellTarget];
+      var sa = mapToScreen(a[0], a[1]), st = mapToScreen(t.cx, t.cy);
+      var rgb = f.owner === me ? '255,170,80' : '255,107,107';
+      ctx.setLineDash([3, 6]); ctx.lineDashOffset = -dashPhase; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(sa[0], sa[1]); ctx.lineTo(st[0], st[1]);
+      ctx.strokeStyle = 'rgba(4,8,14,0.55)'; ctx.lineWidth = 3.6; ctx.stroke();
+      ctx.strokeStyle = 'rgba(' + rgb + ',0.95)'; ctx.lineWidth = 1.8; ctx.stroke();
+      ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.lineCap = 'butt';
+      ctx.beginPath(); ctx.arc(st[0], st[1], 8, 0, Math.PI * 2);   // celownik
+      ctx.moveTo(st[0] - 12, st[1]); ctx.lineTo(st[0] + 12, st[1]); ctx.moveTo(st[0], st[1] - 12); ctx.lineTo(st[0], st[1] + 12);
+      ctx.strokeStyle = 'rgba(' + rgb + ',0.95)'; ctx.lineWidth = 1.6; ctx.stroke();
+    }
   }
   function drawShipGlyph(cx, cy, color) {   // stylizowany okręt (kadłub + nadbudówka), wyśrodkowany w (cx, cy)
     ctx.fillStyle = color;
@@ -1123,7 +1224,12 @@
   // Pętla klatek
   // ---------------------------------------------------------------------------
   // animowany przesuw kresek tylko dla planowanej trasy i trasy zaznaczonej jednostki (zaznaczenie prowincji jest statyczne)
-  function hasAnimation() { return !!(view.preview || view.pending || selHasRoute() || airborne()); }
+  function hasAnimation() { return !!(view.preview || view.pending || selHasRoute() || airborne() || shelling()); }
+  function shelling() {
+    var g = G(); if (!g || !g.fleets) return false;
+    for (var id in g.fleets) if (g.fleets[id].owner === g.player && g.fleets[id].shellTarget != null) return true;
+    return false;
+  }
   function airborne() {
     var g = G(); if (!g || !g.squadrons) return false;
     for (var id in g.squadrons) if (g.squadrons[id].owner === g.player && g.squadrons[id].phase !== 'idle') return true;
@@ -1165,6 +1271,7 @@
     drawHighlights();
     drawCountryLabels();
     drawProvinceLabels();
+    drawSeaLabels();
     drawRoutes();
     drawArmies();
     drawFleets();
@@ -1284,14 +1391,14 @@
     if (!pointer.down) return;
     var p = localXY(e), wasDrag = pointer.moved, unit = pointer.dragUnit, button = pointer.button;
     pointer.down = false; pointer.dragUnit = null; pointer.moved = false;
-    var m = screenToMap(p[0], p[1]), prov = pickProvince(m[0], m[1]);
-    if (unit && wasDrag) { call('dragDrop', unit, prov); needsDraw = true; return; }
+    var m = screenToMap(p[0], p[1]), prov = pickProvince(m[0], m[1]), sea = seaAt(prov, m[0], m[1]);
+    if (unit && wasDrag) { call('dragDrop', unit, prov, sea); needsDraw = true; return; }
     if (wasDrag) return;
-    if (button === 2) { call('rightClick', prov, p[0], p[1]); needsDraw = true; return; }
+    if (button === 2) { call('rightClick', prov, p[0], p[1], sea); needsDraw = true; return; }
     if (button !== 0) return;
     var u = pickUnitAt(p[0], p[1]);
     if (u) call('unitClick', u, e.shiftKey);
-    else call('click', prov, e);
+    else call('click', prov, e, sea);
     needsDraw = true;
   }
   function onPointerCancel(e) {
@@ -1299,10 +1406,11 @@
     pointer.down = false; pointer.dragUnit = null;
   }
   function updateHover(sx, sy) {
-    var m = screenToMap(sx, sy), id = pickProvince(m[0], m[1]);
+    var m = screenToMap(sx, sy), id = pickProvince(m[0], m[1]), sea = seaAt(id, m[0], m[1]);
     var unit = pointer.down ? null : pickUnitAt(sx, sy);
+    if (sea !== view.hoverSea) { view.hoverSea = sea; needsDraw = true; }
     setHover(id);
-    call('hover', id, sx, sy, unit);
+    call('hover', id, sx, sy, unit, sea);
   }
   function onWheel(e) {
     e.preventDefault();
@@ -1316,7 +1424,7 @@
   }
   function onLeave(e) {
     if (e && e.pointerType === 'touch') return;   // palec "opuszcza" canvas przy każdym puszczeniu — nie chowaj tooltipa z long-press
-    setHover(-1); call('hover', -1, 0, 0, null); needsDraw = true;
+    view.hoverSea = -1; setHover(-1); call('hover', -1, 0, 0, null, -1); needsDraw = true;
   }
 
   // ---------------------------------------------------------------------------
@@ -1428,8 +1536,8 @@
       needsDraw = true; return;
     }
     if (unit && wasMoved) {
-      var m = screenToMap(p[0], p[1]);
-      call('dragDrop', unit, pickProvince(m[0], m[1]));
+      var m = screenToMap(p[0], p[1]), dp = pickProvince(m[0], m[1]);
+      call('dragDrop', unit, dp, seaAt(dp, m[0], m[1]));
       setHover(-1);
       needsDraw = true; return;
     }
@@ -1456,27 +1564,27 @@
       return;
     }
     touch.lastTap = { t: now, x: sx, y: sy };
-    var m = screenToMap(sx, sy), prov = pickProvince(m[0], m[1]);
+    var m = screenToMap(sx, sy), prov = pickProvince(m[0], m[1]), sea = seaAt(prov, m[0], m[1]);
     var u = pickUnitAt(sx, sy, TOUCH_UNIT_TOL);
-    if (R.handlers.tap) call('tap', prov, sx, sy, u);
+    if (R.handlers.tap) call('tap', prov, sx, sy, u, sea);
     else if (u) call('unitClick', u, false);
-    else call('click', prov, { shiftKey: false, pointerType: 'touch' });
+    else call('click', prov, { shiftKey: false, pointerType: 'touch' }, sea);
     needsDraw = true;
   }
   function onLongPress() {
     if (!pointer.down || pointer.moved || touches.size !== 1) return;
     touch.longFired = true; touch.infoShown = true;
-    var sx = pointer.sx, sy = pointer.sy, m = screenToMap(sx, sy), prov = pickProvince(m[0], m[1]);
+    var sx = pointer.sx, sy = pointer.sy, m = screenToMap(sx, sy), prov = pickProvince(m[0], m[1]), sea = seaAt(prov, m[0], m[1]);
     var u = pickUnitAt(sx, sy, TOUCH_UNIT_TOL);
-    setHover(prov);
+    setHover(prov); view.hoverSea = sea;
     try { if (navigator.vibrate) navigator.vibrate(12); } catch (err) { /* ignoruj */ }
-    if (R.handlers.longPress) call('longPress', prov, sx, sy, u); else call('hover', prov, sx, sy, u);
+    if (R.handlers.longPress) call('longPress', prov, sx, sy, u, sea); else call('hover', prov, sx, sy, u, sea);
     needsDraw = true;
   }
   function hideTouchInfo() {
     if (!touch.infoShown) return;
     touch.infoShown = false;
-    setHover(-1); call('hover', -1, 0, 0, null);
+    view.hoverSea = -1; setHover(-1); call('hover', -1, 0, 0, null, -1);
   }
 
   // Safari (iOS i touchpad w macOS): własne zdarzenia gesture* — blokujemy zoom strony;
@@ -1529,4 +1637,6 @@
   };
   R.mapData = function () { return MAP; };
   R.provincePath = function (id) { return provPaths[id]; };
+  R.SEA_BASE = SEA_BASE;
+  R.centerOnNode = function (id, zoom) { var p = portPoint(id); R.centerOn(p[0], p[1], zoom); };
 })();

@@ -698,7 +698,7 @@ WT.ai = (function () {
     if (navy >= GUNSHIP_MIN_NAVY && guns < navy * GUNSHIP_TARGET_SHARE) buyGunshipsAI(cc, c);
     S.fleetsOf(cc).forEach(function (f) {
       if (!(f.gunships > 0) || f.path.length || f.cargo.length) return;
-      if (D().atWar(cc, G().provinces[f.prov].ctrl)) return;   // już ostrzeliwuje
+      if (f.shellTarget != null || (!S.isSea(f.prov) && D().atWar(cc, G().provinces[f.prov].ctrl))) return;   // już ostrzeliwuje
       var target = shellingTarget(cc, f);
       if (target >= 0) N().orderFleet(f.id, target);
     });
@@ -714,7 +714,7 @@ WT.ai = (function () {
   function shellingTarget(cc, f) {
     var cands = [];
     D().enemiesOf(cc).forEach(function (e) {
-      S.controlledBy(e).forEach(function (id) { if (N().isPort(id)) cands.push({ prov: id, d: S.dist(f.prov, id) }); });
+      S.controlledBy(e).forEach(function (id) { if (N().isPort(id)) cands.push({ prov: id, d: S.nodeDist(f.prov, id) }); });
     });
     cands.sort(function (a, b) { return a.d - b.d; });
     var mine = f.ships + 1.5 * f.gunships;

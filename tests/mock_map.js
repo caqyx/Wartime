@@ -15,7 +15,7 @@ function cellBox(c, r) { return [OFF + c * CELL, OFF + r * CELL, OFF + (c + 1) *
 function makeProvince(id, c, r, cc, name, pop, coastal, terrain) {
   var b = cellBox(c, r), cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2;
   return {
-    id: id, name: name, cc: cc, c: c, r: r,
+    id: id, name: name, cc: cc, c: c, r: r, ct: CONTINENT[cc],
     poly: [[b[0], b[1], b[2], b[1], b[2], b[3], b[0], b[3]]],
     bbox: b, cx: cx, cy: cy, areaKm2: 40000, pop: pop, coastal: coastal,
     port: coastal ? [cx + 40, cy] : null, nb: [], terrain: terrain || 'plains'
@@ -66,8 +66,30 @@ function buildMap() {
   return {
     width: 900, height: 600, kmPerUnit: KM_PER_UNIT,
     projection: 'miller', lonMin: 0, lonMax: 20, latMin: 30, latMax: 50,
-    provinces: provs, seaLinks: seaLinks(provs), straits: [], background: []
+    provinces: provs, seaLinks: seaLinks(provs), straits: [], background: [], seas: buildSeas()
   };
+}
+
+var CONTINENT = { AAA: 'EU', BBB: 'AS', CCC: 'AF', ISL: 'EU' };
+
+/** Dwie strefy morskie w kolumnie 5 (morze): północna przy BBB/CCC/wyspie, południowa przy CCC i wysepce. */
+function buildSeas() {
+  var box = function (r) { var b = cellBox(5, r); return [b[0], b[1], b[2], b[1], b[2], b[3], b[0], b[3]]; };
+  return [
+    { id: 0, name: 'Morze Północne', poly: [box(0), box(1)], cx: OFF + 5.5 * CELL, cy: OFF + 1 * CELL, nb: [1], coast: [4, 9, 14, 25, 27] },
+    { id: 1, name: 'Morze Południowe', poly: [box(3), box(4)], cx: OFF + 5.5 * CELL, cy: OFF + 4 * CELL, nb: [0], coast: [19, 24, 27, 29] }
+  ];
+}
+
+/** Scenariusz testowy: AAA i BBB połączone w jedno królestwo KRL, epoka bez lotnictwa i okrętów artyleryjskich. */
+function buildScenarios(map) {
+  var owners = map.provinces.map(function (p) { return p.cc === 'AAA' || p.cc === 'BBB' ? 'KRL' : p.cc; });
+  var c = function (name, color, army) { return { name: name, color: color, capitalLonLat: null, gdp: 200, pop: 5, army: army, navy: 2, tech: 0.5,
+    ideology: 'monarchia', gov: 'królestwo', friends: [], rivals: [] }; };
+  return { '1385': { id: '1385', date: '1385-01-01', title: 'test', desc: '', popScale: { EU: 0.1, AS: 0.1, AF: 0.1 },
+    era: { air: false, radar: false, aa: false, gunships: false, costScale: 12.5, priceScale: 1 }, owners: owners,
+    countries: { KRL: c('Królestwo', '#aa2222', 30), CCC: c('Gamma', '#22aa22', 20), ISL: c('Wyspa', '#2222aa', 5) },
+    wars: [['KRL', 'CCC']], occupations: [] } };
 }
 
 function buildCountries(map, unproject) {
@@ -86,6 +108,7 @@ function install(root, WT) {
   root.MAP_DATA = buildMap();
   root.COUNTRY_DATA = buildCountries(root.MAP_DATA, WT.util.unproject);
   root.START_WARS = [['AAA', 'BBB']];
+  root.SCENARIOS = buildScenarios(root.MAP_DATA);
   root.START_OCCUPATIONS = [{ by: 'AAA', cc: 'BBB', lonlat: [WT.util.unproject(330, 180)] }];
   return root.MAP_DATA;
 }

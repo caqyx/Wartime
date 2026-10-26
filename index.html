@@ -86,6 +86,15 @@
           <h1>WARTIME <span>2026</span></h1>
           <p class="subtitle">Europa, Azja i Afryka · 1 stycznia 2026 · wybierz państwo na mapie</p>
         </div>
+        <div class="start-setup">
+          <div class="setup-row"><span class="setup-lbl">Epoka</span><div id="opt-scen" class="seg" role="radiogroup" aria-label="Epoka"></div></div>
+          <p id="scen-desc" class="scen-desc"></p>
+          <div class="setup-row"><span class="setup-lbl">Kontynenty</span><div id="opt-conts" class="seg seg-multi" role="group" aria-label="Kontynenty">
+            <button type="button" class="seg-btn on" data-ct="EU" aria-pressed="true">Europa</button>
+            <button type="button" class="seg-btn on" data-ct="AS" aria-pressed="true">Azja</button>
+            <button type="button" class="seg-btn on" data-ct="AF" aria-pressed="true">Afryka</button>
+          </div></div>
+        </div>
         <label class="search"><input id="start-search" type="search" placeholder="Szukaj państwa…" autocomplete="off"></label>
         <div id="start-results" class="country-list"></div>
         <div id="start-card" class="country-card empty">Kliknij państwo na mapie lub wybierz z listy.</div>
@@ -107,6 +116,7 @@
 
   <script src="data/map.js"></script>
   <script src="data/countries.js"></script>
+  <script src="data/scenarios.js"></script>
   <script src="js/core/util.js"></script>
   <script src="js/core/state.js"></script>
   <script src="js/core/economy.js"></script>

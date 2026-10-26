@@ -2,6 +2,8 @@
 
 Turowa gra strategiczna w stylu Age of History II. Mapa Europy, Azji i Afryki (1639 prowincji, 148 państw) w stanie na 1 stycznia 2026. Afryka dołączyła w późniejszej wersji — stare zapisy wczytują się i automatycznie dostają afrykańskie państwa. Wszystkie państwa grywalne, na starcie bez sojuszy.
 
+**Epoki:** 2026, 1939 (sierpień, tuż przed II wojną światową), 1914 (czerwiec, przed I wojną światową) i 1385 (średniowiecze). **Kontynenty:** na ekranie startowym możesz wyłączyć Europę, Azję lub Afrykę (co najmniej jeden zostaje) — wyłączony ląd jest poza grą (szary, nieprzechodni).
+
 ## Uruchomienie
 
 Otwórz `index.html` w przeglądarce (działa z `file://`) albo:
@@ -68,7 +70,9 @@ python3 -m http.server 8000   # http://localhost:8000
 - **Okręty artyleryjskie:** kupowane w portach (2,5 mld/szt., utrzymanie jak 2 eskadry), dołączają do floty w porcie. Flota stojąca przy prowincji państwa, z którym jesteś w wojnie, co turę ją ostrzeliwuje: zabija do 15% stacjonujących tam wojsk (1500 żołnierzy na okręt × technologia), obniża rozwój, przez 2 tury prowincja daje połowę dochodu, może uszkodzić fort. Forty odpowiadają ogniem (3% szansy zatopienia okrętu na poziom fortu). W bitwie morskiej okręt artyleryjski liczy się jak 1,5 eskadry. AI też je kupuje i ostrzeliwuje wybrzeża.
 - **Agresywność AI** (ustawienie 0–100, domyślnie 50): wpływa na szansę wypowiadania wojen, próg relacji i przewagę potrzebną do ataku, limit jednoczesnych wojen oraz gotowość do białego pokoju. 0 = brak nowych wojen AI. W Dyplomacji każde państwo ma pasek „Agresywność wobec ciebie” (relacje, przewaga militarna, niedawne wojny, ustrój, sąsiedztwo), a na liście państw groźne są oznaczone kropką.
 - **Automatyczne odrzucanie paktów:** propozycje paktów o nieagresji nie pojawiają się (wpis w dzienniku), AI przestaje je proponować.
-- **Flota:** eskadry poruszają się po grafie morskim, przewożą wojsko (1 eskadra = 10 tys.), bitwy morskie.
+- **Flota i strefy morskie:** morze jest podzielone na 1152 strefy (nazwy z Natural Earth, np. „Morze Egejskie 1”). Floty pływają między portami i strefami, mogą stać na morzu, przewożą wojsko (1 eskadra = 10 tys.), toczą bitwy morskie. Rozkaz: zaznacz flotę → PPM (na telefonie stuknięcie) na prowincję nadmorską albo strefę morską. Kliknięcie strefy otwiera jej panel z flotami.
+- **Ostrzał z morza (jak naloty, ale dla okrętów):** zaznacz flotę z okrętami artyleryjskimi → „Cel ostrzału” → kliknij prowincję wroga w zasięgu (pomarańczowy okrąg, 320 km od floty; Artyleria okrętowa +120 km, Pociski manewrujące +250 km). Flota ostrzeliwuje cel co turę, dopóki jest w zasięgu i trwa wojna; linia z celownikiem pokazuje cel. „Przerwij ostrzał” kasuje rozkaz. Bez wskazanego celu flota w porcie wroga ostrzeliwuje ten port (jak wcześniej).
+- **Epoki historyczne:** granice z historical-basemaps (aourednik, licencja GPL-3.0) przypisane do prowincji wg większości powierzchni + ręczne poprawki; ludność skalowana per kontynent; PKB/armie/floty szacunkowe. 1939: wojna japońsko-chińska, bez sojuszy. 1914: bez lotnictwa, radaru i plot. (okręty artyleryjskie są). 1385: bez lotnictwa, radaru, plot. i okrętów artyleryjskich; wojny Anglia–Francja, Kastylia–Portugalia, Zakon Krzyżacki–Litwa; jednostka pieniądza ×50, koszty budynków przeliczone.
 - **God Mode:** nielimitowana kasa i rezerwy, natychmiastowe budowy, przejmowanie prowincji, dodawanie armii, wymuszanie pokoju/sojuszu, ustawianie relacji. Włączany na starcie lub w trakcie gry.
 - **Zapis:** 5 slotów + autosave co 5 tur, eksport/import JSON.
 - **Konflikty 2026** (opcja): Rosja–Ukraina (okupowany Donbas, Krym), Izrael–Palestyna.
@@ -77,5 +81,6 @@ python3 -m http.server 8000   # http://localhost:8000
 
 - `data/map.js` — generowane przez `tools/build_map.py` z Natural Earth (`pip install shapely numpy scipy matplotlib`, `python3 tools/build_map.py --preview`).
 - `data/countries.js` — dane państw 2026 (PKB, populacja, armia, flota, relacje).
+- `data/scenarios.js` — epoki 1939/1914/1385 (właściciele prowincji, państwa, wojny), generowane przez `tools/build_scenarios.py` z [historical-basemaps](https://github.com/aourednik/historical-basemaps) (GPL-3.0).
 - `js/core/*` — logika bez DOM, `js/ui/*` — renderer canvas i UI. Kontrakt modułów: `docs/SPEC.md`.
 - Testy: `node tests/run_tests.js`, symulacja na prawdziwych danych: `node tests/sim_real.js 100`.

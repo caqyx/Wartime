@@ -336,3 +336,12 @@ Fonty: systemowe sans + monospace dla liczb.
 - `state.extendWorld(g)`: zapis z krótszą listą prowincji dostaje brakujące prowincje i państwa (stolice, PKB, relacje, forty, armie, floty jak w nowej grze); `save.applyState` wywołuje to automatycznie. Zapis z dłuższą listą niż mapa jest odrzucany.
 - Aliasy NE: SAH→MAR, SOL→SOM, BRT→EGY; pominięte: Réunion, Majotta, ATF, SHN, IOT.
 
+
+### Epoki, kontynenty, strefy morskie
+- `window.SCENARIOS[id] = {id, date, title, desc, popScale{EU,AS,AF}, era{air, radar, aa, gunships, costScale, priceScale}, owners[prov] (cc), countries{cc: {name, color, capitalLonLat, gdp, pop, army, navy, tech, ideology, gov, friends, rivals}}, wars[[a,b]], occupations[[occupant, prov]]}`; `'2026'` = dane bazowe (brak wpisu).
+- `newGame({scenario, continents:['EU','AS','AF'], ...})`; `G.scenario`, `G.era`, `G.popScale`, `G.continents`. `state.era(feature)` (brak `G.era` = wszystko dostępne), `state.provPop(id)` (ludność prowincji × popScale kontynentu), `state.scenarioData(id)`.
+- Prowincja `ct` ∈ {EU, AS, AF} (MAP_DATA). Prowincje wyłączonych kontynentów mają właściciela `state.VOID = 'XXX'` (państwo martwe, nieprzechodnie, rysowane jak tło, niewybieralne).
+- `MAP_DATA.seas[k] = {id, name, poly, cx, cy, nb[k], coast[prov]}`; węzeł strefy = `state.SEA_BASE (100000) + k`. `state.isSea, seaZone, nodePoint, nodeName, nodeDist`; `seaNeighbors` i `naval.seaPath/orderFleet` przyjmują strefy. Flota może stać w strefie (`fleet.prov` = id strefy); ładunek nie może tam wysiąść.
+- Ostrzał z dystansu: `fleet.shellTarget`; `naval.orderShell(fleetId, prov) → {ok, reason}`, `cancelShell(fleetId)`, `checkShell(f, prov) → błąd|null`, `shellRangeKm(cc)` (320 + tech `shellRange`), `distToProvince(node, prov)` (do portu lub środka prowincji).
+- Render: `render.pickSea(mx, my)`, `nodePath(id)`, `view.hoverSea/selSea/shellRange`; handlery `click(prov, e, sea)`, `rightClick(prov, sx, sy, sea)`, `dragDrop(unit, prov, sea)`, `hover(prov, sx, sy, unit, sea)`, `tap(prov, sx, sy, unit, sea)`, `longPress(…, sea)` — `sea` ≥ 0 tylko gdy pod kursorem nie ma lądu.
+- UI: ekran startowy buduje grę-podgląd (`newGame` z `player: null` i tym samym ziarnem), więc mapa, lista i karta państwa pokazują wybraną epokę i kontynenty; „Rozpocznij” tworzy grę z identycznymi opcjami.

@@ -7,9 +7,12 @@ WT.state = (function () {
   var MONTHS = ['stycznia', 'lutego', 'marca', 'kwietnia', 'maja', 'czerwca', 'lipca',
     'sierpnia', 'września', 'października', 'listopada', 'grudnia'];
   var DEFAULT_TECH = 0.6;
+  var VOID = 'XXX';                  // pseudo-państwo „poza grą” (wyłączone kontynenty): martwe, nieprzechodnie
+  var SEA_BASE = 100000;             // węzły stref morskich: SEA_BASE + numer strefy (numery prowincji się nie zmieniają)
+  var CONTINENTS = ['EU', 'AS', 'AF'];
 
   // Indeksy przebudowywane z G (nie trafiają do zapisu).
-  var idx = { map: null, landAdj: [], seaAdj: [], byOwner: {}, byCtrl: {}, armiesAt: {}, fleetsAt: {} };
+  var idx = { map: null, landAdj: [], seaAdj: [], zoneAdj: [], byOwner: {}, byCtrl: {}, armiesAt: {}, fleetsAt: {} };
 
   function G() { return WT.G; }
   function M() { return U.mapData(); }
@@ -18,10 +21,18 @@ WT.state = (function () {
   // Nowa gra
   // =====================================================================
 
+  /** Scenariusz z data/scenarios.js (1385, 1914, 1939) albo null dla 2026. */
+  function scenarioData(id) {
+    var all = U.root().SCENARIOS || {};
+    return id && id !== '2026' && all[id] ? all[id] : null;
+  }
+
   function newGame(opts) {
     opts = opts || {};
     var seed = (opts.seed != null ? opts.seed : Math.floor(Math.random() * 1e9)) >>> 0;
     var g = createEmptyState(opts, seed);
+    var sc = scenarioData(opts.scenario);
+    if (sc) { g.scenario = sc.id; g.date = sc.date; g.era = sc.era; g.popScale = sc.popScale; }
     WT.G = g;
     buildStaticGraphs();
     createProvinces(g);
@@ -48,7 +59,9 @@ WT.state = (function () {
       countries: {}, provinces: [], armies: {}, fleets: {}, squadrons: {}, trades: [],
       nextId: 100, rel: {}, wars: [], alliances: [], pacts: [], truces: [],
       proposals: [], log: [], gameOver: false,
-      settings: makeSettings(opts)
+      settings: makeSettings(opts),
+      scenario: '2026', era: null, popScale: null,
+      continents: activeContinents(opts.continents)
     };
   }
 
@@ -63,21 +76,60 @@ WT.state = (function () {
     return g.settings;
   }
 
+  function activeContinents(list) {
+    var on = (list || CONTINENTS).filter(function (c) { return CONTINENTS.indexOf(c) >= 0; });
+    return on.length ? on : CONTINENTS.slice();
+  }
+
+  /** Właściciel startowy: scenariusz albo dzisiejsze państwo; wyłączony kontynent -> VOID. */
+  function startOwner(g, i) {
+    var p = M().provinces[i];
+    if (p.ct && (g.continents || CONTINENTS).indexOf(p.ct) < 0) return VOID;
+    var sc = scenarioData(g.scenario);
+    return sc ? sc.owners[i] : p.cc;
+  }
+
   function createProvinces(g) {
     var provs = M().provinces;
     for (var i = g.provinces.length; i < provs.length; i++) {
+      var own = startOwner(g, i);
       g.provinces.push({
-        owner: provs[i].cc, ctrl: provs[i].cc,
+        owner: own, ctrl: own,
         buildings: { factory: 0, fort: 0, port: 0, barracks: 0, aa: 0, radar: 0, university: 0 },
         builds: {}, unrest: 0, dev: 1.0, gdp: 0, siege: null
       });
     }
   }
 
+  /** Ludność prowincji w mln — w scenariuszach historycznych przeskalowana do epoki (wg kontynentu). */
+  function provPop(id) {
+    var p = M().provinces[id], k = G() && G().popScale ? (G().popScale[p.ct] || 0.2) : 1;
+    return (p.pop || 0) * k;
+  }
+
   function collectCountryPops() {
-    var pops = {}, provs = M().provinces;
-    for (var i = 0; i < provs.length; i++) pops[provs[i].cc] = (pops[provs[i].cc] || 0) + (provs[i].pop || 0);
+    var pops = {};
+    G().provinces.forEach(function (p, i) { pops[p.owner] = (pops[p.owner] || 0) + provPop(i); });
     return pops;
+  }
+
+  /** Dane państw: scenariusz historyczny albo COUNTRY_DATA (2026). */
+  function countryDataFor(g) {
+    var sc = scenarioData(g.scenario);
+    return sc ? sc.countries : U.countryData();
+  }
+
+  /** „Poza grą”: martwe pseudo-państwo bez armii, nieprzechodnie (brak wojny i sojuszu z kimkolwiek). */
+  function makeVoidCountry() {
+    var c = makeCountry(VOID, { name: 'Poza grą', color: '#2b3442', gdp: 0, army: 0, navy: 0, friends: [], rivals: [] }, 0);
+    c.alive = false; c.void = true; c.baseArmy = 0;
+    return c;
+  }
+
+  /** Czy funkcja jest dostępna w epoce scenariusza (air, radar, aa, gunships); 2026 — wszystko. */
+  function era(feature) {
+    var e = G() && G().era;
+    return !e || e[feature] !== false;
   }
 
   /**
@@ -88,9 +140,10 @@ WT.state = (function () {
   function extendWorld(g) {
     if (g.provinces.length >= M().provinces.length) return [];
     createProvinces(g);
-    var pops = collectCountryPops(), data = U.countryData();
+    var pops = collectCountryPops(), data = countryDataFor(g);
     var added = Object.keys(pops).filter(function (cc) { return !g.countries[cc]; }).sort();
-    added.forEach(function (cc) { g.countries[cc] = makeCountry(cc, data[cc], pops[cc]); });
+    added.forEach(function (cc) { g.countries[cc] = cc === VOID ? makeVoidCountry() : makeCountry(cc, data[cc], pops[cc]); });
+    added = added.filter(function (cc) { return cc !== VOID; });
     if (WT.tech) WT.tech.ensureAll();
     buildStaticGraphs();
     rebuildIndex();
@@ -105,9 +158,9 @@ WT.state = (function () {
   }
 
   function createCountries(g) {
-    var pops = collectCountryPops(), data = U.countryData();
+    var pops = collectCountryPops(), data = countryDataFor(g);
     Object.keys(pops).sort().forEach(function (cc) {
-      g.countries[cc] = makeCountry(cc, data[cc], pops[cc]);
+      g.countries[cc] = cc === VOID ? makeVoidCountry() : makeCountry(cc, data[cc], pops[cc]);
     });
   }
 
@@ -140,7 +193,7 @@ WT.state = (function () {
   function allCc(g, ccs) { return ccs || Object.keys(g.countries); }
 
   function assignCapitals(g, ccs) {
-    allCc(g, ccs).forEach(function (cc) { g.countries[cc].capital = findCapital(g.countries[cc]); });
+    allCc(g, ccs).forEach(function (cc) { if (cc !== VOID) g.countries[cc].capital = findCapital(g.countries[cc]); });
   }
 
   function findCapital(c) {
@@ -169,6 +222,7 @@ WT.state = (function () {
   // PKB kraju rozkładany na prowincje wg populacji (stolica z premią 1.5×).
   function distributeGdp(g, ccs) {
     allCc(g, ccs).forEach(function (cc) {
+      if (cc === VOID) return;
       var c = g.countries[cc], own = idx.byOwner[cc] || [];
       var weights = own.map(function (id) {
         var w = (M().provinces[id].pop || 0) + 0.01;
@@ -288,16 +342,22 @@ WT.state = (function () {
   // ---------- Konflikty startowe 2026 ----------
 
   function applyStartConflicts(g) {
-    var root = U.root();
-    (root.START_WARS || []).forEach(function (w) {
-      if (g.countries[w[0]] && g.countries[w[1]]) WT.diplomacy.startWar([w[0]], [w[1]], true);
+    var root = U.root(), sc = scenarioData(g.scenario);
+    var alive = function (cc) { return g.countries[cc] && g.countries[cc].alive; };
+    ((sc ? sc.wars : root.START_WARS) || []).forEach(function (w) {
+      if (alive(w[0]) && alive(w[1])) WT.diplomacy.startWar([w[0]], [w[1]], true);
     });
-    (root.START_OCCUPATIONS || []).forEach(applyStartOccupation);
+    if (sc) (sc.occupations || []).forEach(function (o) {
+      if (!alive(o.by) || !alive(o.cc)) return;
+      o.provinces.forEach(function (id) { if (g.provinces[id].owner === o.cc && id !== g.countries[o.cc].capital) setCtrl(id, o.by); });
+    });
+    else (root.START_OCCUPATIONS || []).forEach(applyStartOccupation);
     fortifyFrontLines(g);
   }
 
   function applyStartOccupation(occ) {
-    if (!G().countries[occ.by] || !G().countries[occ.cc]) return;
+    var cs = G().countries;
+    if (!cs[occ.by] || !cs[occ.cc] || !cs[occ.by].alive || !cs[occ.cc].alive) return;
     occ.lonlat.forEach(function (ll) {
       // punkt już w granicach okupanta (np. Krym w danych NE) — nie szukaj zastępczej prowincji
       var here = U.provinceAtLonLat(ll[0], ll[1]);
@@ -327,6 +387,38 @@ WT.state = (function () {
       sea[l[1]].push({ to: l[0], d: d });
     });
     idx.landAdj = land; idx.seaAdj = sea;
+    idx.zoneAdj = buildZoneGraph(map, sea);
+  }
+
+  /** Strefy morskie: krawędzie strefa–strefa i strefa–prowincja nadmorska (w obie strony), w km. */
+  function buildZoneGraph(map, sea) {
+    var zones = map.seas || [], adj = zones.map(function () { return []; });
+    zones.forEach(function (z, k) {
+      var id = SEA_BASE + k;
+      z.nb.forEach(function (j) {
+        if (j <= k) return;
+        var d = nodeDist(id, SEA_BASE + j);
+        adj[k].push({ to: SEA_BASE + j, d: d }); adj[j].push({ to: id, d: d });
+      });
+      z.coast.forEach(function (p) { var d = nodeDist(id, p); adj[k].push({ to: p, d: d }); sea[p].push({ to: id, d: d }); });
+    });
+    return adj;
+  }
+
+  // ---------- węzły morskie (strefy) i lądowe (porty) ----------
+  function isSea(id) { return id >= SEA_BASE; }
+  function seaZone(id) { return (M().seas || [])[id - SEA_BASE] || null; }
+  function seaZoneCount() { return (M().seas || []).length; }
+  /** Punkt węzła na mapie: środek strefy albo port prowincji (gdy brak — jej środek). */
+  function nodePoint(id) {
+    if (isSea(id)) { var z = seaZone(id); return [z.cx, z.cy]; }
+    var p = M().provinces[id];
+    return p.port || [p.cx, p.cy];
+  }
+  function nodeName(id) { return isSea(id) ? seaZone(id).name : M().provinces[id].name; }
+  function nodeDist(a, b) {
+    var pa = nodePoint(a), pb = nodePoint(b), dx = pa[0] - pb[0], dy = pa[1] - pb[1];
+    return Math.sqrt(dx * dx + dy * dy) * (M().kmPerUnit || 4.1);
   }
 
   /** Odbudowuje wszystkie indeksy z WT.G (po wczytaniu gry). */
@@ -362,7 +454,7 @@ WT.state = (function () {
   function provincesOf(cc) { return (idx.byOwner[cc] || []).slice(); }
   function controlledBy(cc) { return (idx.byCtrl[cc] || []).slice(); }
   function landNeighbors(id) { return idx.landAdj[id]; }
-  function seaNeighbors(id) { return idx.seaAdj[id]; }
+  function seaNeighbors(id) { return isSea(id) ? (idx.zoneAdj[id - SEA_BASE] || []) : idx.seaAdj[id]; }
   function provinceCount() { return G().provinces.length; }
   function provincesWithArmies() { return Object.keys(idx.armiesAt).map(Number); }
 
@@ -487,7 +579,8 @@ WT.state = (function () {
     indexRemove(idx.fleetsAt, fleet.prov, fleet.id);
     fleet.prov = provId;
     indexAdd(idx.fleetsAt, provId, fleet.id);
-    fleet.cargo.forEach(function (aid) { var a = G().armies[aid]; if (a) a.prov = provId; });
+    // armie na pokładzie zachowują ostatnią prowincję lądową, dopóki flota stoi w strefie morskiej
+    if (!isSea(provId)) fleet.cargo.forEach(function (aid) { var a = G().armies[aid]; if (a) a.prov = provId; });
   }
 
   // ---------- Dziennik ----------
@@ -518,7 +611,9 @@ WT.state = (function () {
     createArmy: createArmy, removeArmy: removeArmy, moveArmy: moveArmy,
     embarkArmy: embarkArmy, disembarkArmy: disembarkArmy,
     createFleet: createFleet, removeFleet: removeFleet, moveFleet: moveFleet,
-    findCapital: findCapital, addLog: addLog, extendWorld: extendWorld, involvesPlayer: involvesPlayer, settings: settings
+    findCapital: findCapital, addLog: addLog, extendWorld: extendWorld,
+    VOID: VOID, SEA_BASE: SEA_BASE, CONTINENTS: CONTINENTS, scenarioData: scenarioData, provPop: provPop, era: era,
+    isSea: isSea, seaZone: seaZone, seaZoneCount: seaZoneCount, nodePoint: nodePoint, nodeName: nodeName, nodeDist: nodeDist, involvesPlayer: involvesPlayer, settings: settings
   };
 })();
 

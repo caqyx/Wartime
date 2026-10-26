@@ -13,10 +13,13 @@ WT.naval = (function () {
   var SHELL_MAX_ARMY = 0.15;         // maks. strata armii w prowincji na turę
   var SHELL_DEV = 0.008, SHELL_MAX_DEV = 0.12, SHELL_FORT = 0.04;
   var FORT_RETURN_FIRE = 0.03;       // szansa zatopienia okrętu na poziom fortu
+  var SHELL_RANGE_KM = 320;          // zasięg ostrzału z dystansu (od floty do portu/środka prowincji)
 
   function G() { return WT.G; }
   function name(cc) { return S.country(cc).name; }
-  function isPort(provId) { return !!S.provStatic(provId).coastal && S.seaNeighbors(provId).length > 0; }
+  function isPort(provId) { return !S.isSea(provId) && !!S.provStatic(provId).coastal && S.seaNeighbors(provId).length > 0; }
+  /** Węzeł grafu morskiego: strefa morska albo prowincja nadmorska. */
+  function isNode(id) { return S.isSea(id) ? !!S.seaZone(id) : isPort(id); }
 
   // =====================================================================
   // Graf morski
@@ -25,7 +28,7 @@ WT.naval = (function () {
   /** Dijkstra po seaLinks. Zwraca węzły bez startowego; [] gdy from===to; null gdy brak drogi. */
   function seaPath(fromProv, toProv) {
     if (fromProv === toProv) return [];
-    if (!isPort(fromProv) || !isPort(toProv)) return null;
+    if (!isNode(fromProv) || !isNode(toProv)) return null;
     var dist = {}, came = {}, done = {}, pq = new U.PriorityQueue();
     dist[fromProv] = 0;
     pq.push(fromProv, 0);
@@ -65,7 +68,7 @@ WT.naval = (function () {
   function orderFleet(fleetId, destProv) {
     var f = G().fleets[fleetId];
     if (!f) return { ok: false, reason: 'Nie ma takiej floty.' };
-    if (!isPort(destProv)) return { ok: false, reason: 'Cel nie jest prowincją nadmorską.' };
+    if (!isNode(destProv)) return { ok: false, reason: 'Cel nie jest morzem ani prowincją nadmorską.' };
     var path = seaPath(f.prov, destProv);
     if (!path) return { ok: false, reason: 'Brak drogi morskiej do celu.' };
     f.path = path;
@@ -123,6 +126,7 @@ WT.naval = (function () {
   function unload(fleetId) {
     var f = G().fleets[fleetId];
     if (!f || !f.cargo.length) return { ok: false, reason: 'Flota nie przewozi wojsk.' };
+    if (S.isSea(f.prov)) return { ok: false, reason: 'Flota jest na morzu — wyślij ją do prowincji nadmorskiej.' };
     if (!Mil().canEnter(f.owner, f.prov)) return { ok: false, reason: 'Brak dostępu do tej prowincji.' };
     land(f);
     return { ok: true, reason: 'Wojska wysadzone.' };
@@ -143,7 +147,7 @@ WT.naval = (function () {
       S.moveFleet(f, f.path.shift());
       if (hostileFleets(f).length) { navalBattle(f); if (!G().fleets[f.id] || !f.path.length) return; }
     }
-    if (!f.path.length && f.landAt === f.prov) land(f);
+    if (!f.path.length && f.landAt === f.prov && !S.isSea(f.prov)) land(f);
   }
 
   function hostileFleets(f) {
@@ -172,7 +176,7 @@ WT.naval = (function () {
   function returnHome(f) {
     var path = seaPath(f.prov, f.home);
     if (path && path.length) { f.path = path; f.landAt = f.home; }
-    else { f.path = []; f.landAt = null; if (f.prov === f.home) land(f); }
+    else { f.path = []; f.landAt = null; if (f.prov === f.home && !S.isSea(f.prov)) land(f); }
   }
 
   // =====================================================================
@@ -217,10 +221,11 @@ WT.naval = (function () {
   // Okręty artyleryjskie: zakup i ostrzał wybrzeża
   // =====================================================================
 
-  function gunshipCost(n) { return U.round(n * GUNSHIP_COST, 2); }
+  function gunshipCost(n) { return U.round(n * GUNSHIP_COST * WT.economy.priceScale(), 2); }
 
   function canBuyGunships(cc, provId, n) {
     var p = G().provinces[provId];
+    if (!S.era('gunships')) return { ok: false, reason: 'Okręty artyleryjskie niedostępne w tej epoce.' };
     if (!(n >= 1)) return { ok: false, reason: 'Podaj liczbę okrętów.' };
     if (!p || p.owner !== cc || p.ctrl !== cc) return { ok: false, reason: 'Okręty kupuje się we własnej, kontrolowanej prowincji.' };
     if (!S.provStatic(provId).coastal || (p.buildings.port || 0) < 1) return { ok: false, reason: 'Wymagany port.' };
@@ -239,18 +244,58 @@ WT.naval = (function () {
     return f;
   }
 
-  /** Ostrzał: floty z okrętami artyleryjskimi stojące przy prowincji wroga (po ruchu flot). */
+  // ---------- Ostrzał z dystansu: flota w strefie morskiej (albo w porcie) ostrzeliwuje wskazaną prowincję w zasięgu ----------
+
+  /** Zasięg dział okrętowych (technologie: artyleria okrętowa, pociski manewrujące). */
+  function shellRangeKm(cc) { return SHELL_RANGE_KM + (WT.tech && cc ? WT.tech.add(cc, 'shellRange') : 0); }
+
+  /** Odległość floty od prowincji: do jej portu (jeśli nadmorska) albo do środka — liczy się bliższy punkt. */
+  function distToProvince(node, provId) {
+    var a = S.nodePoint(node), ps = S.provStatic(provId), k = U.mapData().kmPerUnit || 4;
+    var pts = [[ps.cx, ps.cy]].concat(ps.port ? [ps.port] : []);
+    return Math.min.apply(null, pts.map(function (q) { return Math.hypot(q[0] - a[0], q[1] - a[1]) * k; }));
+  }
+
+  function checkShell(f, target) {
+    if (!f) return 'Nie ma takiej floty.';
+    if (!(f.gunships > 0)) return 'Flota nie ma okrętów artyleryjskich.';
+    if (target == null || target < 0 || S.isSea(target) || !G().provinces[target]) return 'Wskaż prowincję lądową.';
+    if (!D().atWar(f.owner, G().provinces[target].ctrl)) return 'Ostrzeliwać można tylko prowincje państw, z którymi jesteś w wojnie.';
+    var d = distToProvince(f.prov, target), r = shellRangeKm(f.owner);
+    if (d > r) return 'Poza zasięgiem dział: ' + Math.round(d) + ' km (maks. ' + r + ' km od floty).';
+    return null;
+  }
+
+  /** Stały cel ostrzału: flota co turę ostrzeliwuje prowincję, dopóki stoi w zasięgu i trwa wojna. */
+  function orderShell(fleetId, target) {
+    var f = G().fleets[fleetId], err = checkShell(f, target);
+    if (err) return { ok: false, reason: err };
+    f.shellTarget = target;
+    return { ok: true, reason: 'Cel ostrzału: ' + S.provStatic(target).name + ' (' + f.gunships + ' okr.). Ostrzał co turę na końcu tury.' };
+  }
+  function cancelShell(fleetId) {
+    var f = G().fleets[fleetId];
+    if (!f || f.shellTarget == null) return false;
+    f.shellTarget = null;
+    return true;
+  }
+
+  /** Po ruchu flot: wskazany cel w zasięgu, inaczej prowincja wroga, przy której stoi flota. */
   function shellAll() {
     Object.keys(G().fleets).forEach(function (id) {
       var f = G().fleets[id];
       if (!f || !(f.gunships > 0) || f.path.length) return;
-      var p = G().provinces[f.prov];
-      if (p && D().atWar(f.owner, p.ctrl)) shellProvince(f);
+      if (f.shellTarget != null) {
+        if (!checkShell(f, f.shellTarget)) { shellProvince(f, f.shellTarget); return; }
+        if (G().provinces[f.shellTarget] && !D().atWar(f.owner, G().provinces[f.shellTarget].ctrl)) f.shellTarget = null;   // wojna skończona
+      }
+      var p = S.isSea(f.prov) ? null : G().provinces[f.prov];
+      if (p && D().atWar(f.owner, p.ctrl)) shellProvince(f, f.prov);
     });
   }
 
-  function shellProvince(f) {
-    var provId = f.prov, p = G().provinces[provId], defender = p.ctrl;
+  function shellProvince(f, target) {
+    var provId = target != null ? target : f.prov, p = G().provinces[provId], defender = p.ctrl;
     var resist = techMod(defender, 'coastDef');
     var power = f.gunships * S.country(f.owner).tech * techMod(f.owner, 'shellDamage') * resist * U.randRange(0.8, 1.2);
     var killed = shellArmies(f.owner, provId, power);
@@ -298,12 +343,13 @@ WT.naval = (function () {
 
   function logNavalBattle(r) {
     if (!S.involvesPlayer(r.attacker, r.defender)) return;
-    S.addLog('Bitwa morska przy ' + S.provStatic(r.prov).name + ': ' + name(r.attacker) + ' vs ' + name(r.defender) +
+    S.addLog('Bitwa morska: ' + S.nodeName(r.prov) + ': ' + name(r.attacker) + ' vs ' + name(r.defender) +
       '. Zwycięstwo: ' + name(r.winnerCc) + '.', G().player);
   }
 
   return {
-    FLEET_MOVES: FLEET_MOVES, SHIP_CAPACITY: SHIP_CAPACITY, GUNSHIP_COST: GUNSHIP_COST,
+    FLEET_MOVES: FLEET_MOVES, SHIP_CAPACITY: SHIP_CAPACITY, GUNSHIP_COST: GUNSHIP_COST, SHELL_RANGE_KM: SHELL_RANGE_KM,
+    isNode: isNode, shellRangeKm: shellRangeKm, distToProvince: distToProvince, checkShell: checkShell, orderShell: orderShell, cancelShell: cancelShell,
     fleetMoves: fleetMoves, gunshipCost: gunshipCost, canBuyGunships: canBuyGunships, buyGunships: buyGunships, shellAll: shellAll, shellProvince: shellProvince,
     isPort: isPort, seaPath: seaPath, seaTurns: seaTurns, orderFleet: orderFleet,
     freeCapacity: freeCapacity, cargoSize: cargoSize, planInvasion: planInvasion, unload: unload,

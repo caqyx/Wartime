@@ -51,7 +51,7 @@ WT.economy = (function () {
   }
   function countryPop(cc) {
     var sum = 0, own = S.provincesOf(cc);
-    for (var i = 0; i < own.length; i++) sum += S.provStatic(own[i]).pop || 0;
+    for (var i = 0; i < own.length; i++) sum += S.provPop(own[i]);
     return sum;
   }
   function gdpPerCapita(cc) {
@@ -59,7 +59,15 @@ WT.economy = (function () {
     return pop > 0 ? countryGdp(cc) / pop * 1000 : 0;
   }
   /** Mnożnik kosztów wojska: bogate kraje płacą więcej, biedne mniej (Indie/Chiny utrzymają duże armie). */
-  function costScale(cc) { return U.clamp(gdpPerCapita(cc) / 30000, 0.25, 1.5); }
+  /** Mnożnik cen budynków i jednostek w scenariuszu historycznym (1 dla 2026). */
+  function priceScale() { var e = G() && G().era; return e && e.priceScale ? e.priceScale : 1; }
+
+  /** Skala kosztów wojska wg zamożności; scenariusze historyczne mają stałą skalę epoki (era.costScale). */
+  function costScale(cc) {
+    var era = G() && G().era;
+    if (era && era.costScale) return era.costScale;
+    return U.clamp(gdpPerCapita(cc) / 30000, 0.25, 1.5);
+  }
   function stabilityMod(c) { return 0.5 + 0.5 * c.stability / 100; }
 
   // =====================================================================
@@ -155,12 +163,13 @@ WT.economy = (function () {
 
   function buildCost(cc, provId, type) {
     var b = BUILDINGS[type], level = G().provinces[provId].buildings[type] || 0;
-    return U.round((b.cost + provGdp(provId) * b.rate) * (1 + 0.5 * level), 2);
+    return U.round((b.cost * priceScale() + provGdp(provId) * b.rate) * (1 + 0.5 * level), 2);
   }
 
   function canBuild(cc, provId, type) {
     var b = BUILDINGS[type], p = G().provinces[provId];
     if (!b) return { ok: false, reason: 'Nieznany typ budynku.' };
+    if ((type === 'aa' || type === 'radar') && !S.era(type)) return { ok: false, reason: b.name + ': niedostępne w tej epoce.' };
     if (!p || p.owner !== cc) return { ok: false, reason: 'To nie jest twoja prowincja.' };
     if (p.ctrl !== cc) return { ok: false, reason: 'Prowincja jest okupowana.' };
     var inProgress = buildsOf(p)[type];
@@ -259,7 +268,7 @@ WT.economy = (function () {
     return (WT.military && WT.military.merge(provId, cc)) || army;
   }
 
-  function buildShipsCost(n) { return U.round(n * SHIP_COST, 2); }
+  function buildShipsCost(n) { return U.round(n * SHIP_COST * priceScale(), 2); }
 
   function canBuildShips(cc, provId, n) {
     var p = G().provinces[provId];
@@ -305,7 +314,7 @@ WT.economy = (function () {
   function regenManpower(c) {
     var regen = 0, cap = 0;
     S.provincesOf(c.cc).forEach(function (id) {
-      var p = G().provinces[id], pop = S.provStatic(id).pop || 0;
+      var p = G().provinces[id], pop = S.provPop(id);
       cap += pop * MANPOWER_CAP * (1 + 0.1 * p.buildings.barracks);
       if (p.ctrl === c.cc) regen += pop * MANPOWER_REGEN * (1 + 0.25 * p.buildings.barracks) * techMod(c.cc, 'manpower');
     });
@@ -366,7 +375,7 @@ WT.economy = (function () {
     buildShipsCost: buildShipsCost, canBuildShips: canBuildShips, buildShips: buildShips,
     processTurn: processTurn,
     provGdp: provGdp, countryGdp: countryGdp, countryPop: countryPop, gdpPerCapita: gdpPerCapita,
-    costScale: costScale, armySoldiers: armySoldiers, navyShips: navyShips, canAfford: canAfford, pay: pay
+    costScale: costScale, priceScale: priceScale, armySoldiers: armySoldiers, navyShips: navyShips, canAfford: canAfford, pay: pay
   };
 })();
 
