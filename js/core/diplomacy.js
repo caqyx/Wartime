@@ -26,7 +26,15 @@ WT.diplomacy = (function () {
       markCoBelligerents(w.defenders);
     });
     G().alliances.forEach(function (al) { idx.allied[U.key(al[0], al[1])] = true; });
+    // wasal i suzeren traktowani jak sojusznicy (przejście wojsk, wspólna obrona)
+    Object.keys(G().countries).forEach(function (cc) {
+      var c = G().countries[cc];
+      if (c.alive && c.overlord && G().countries[c.overlord] && G().countries[c.overlord].alive) idx.allied[U.key(cc, c.overlord)] = true;
+    });
   }
+  function V() { return WT.vassal || null; }
+  function overlordOf(cc) { return V() ? V().overlordOf(cc) : null; }
+  function vassalsOf(cc) { return V() ? V().vassalsOf(cc) : []; }
   function markCoBelligerents(side) {
     for (var i = 0; i < side.length; i++) for (var j = i + 1; j < side.length; j++) idx.coBell[U.key(side[i], side[j])] = true;
   }
@@ -95,14 +103,28 @@ WT.diplomacy = (function () {
     reindex();
     attackers.forEach(function (a) { defenders.forEach(function (d) { removePactAndTruce(a, d); setRel(a, d, Math.min(relation(a, d), -50)); }); });
     if (!silent) S.addLog(name(attackers[0]) + ' wypowiada wojnę: ' + name(defenders[0]) + '!', attackers[0]);
+    joinVassalLinks(war);
     WT.events.emit('war', { war: war, attacker: attackers[0], defender: defenders[0] });
     return war;
+  }
+
+  /** Wasale walczą u boku suzerena; suzeren broni zaatakowanego wasala. */
+  function joinVassalLinks(war) {
+    war.attackers.slice().forEach(function (a) { vassalsOf(a).forEach(function (v) { if (!sideOf(war, v)) joinWar(war, v, 'attackers'); }); });
+    war.defenders.slice().forEach(function (d) {
+      var lord = overlordOf(d);
+      if (lord && !sideOf(war, lord)) joinWar(war, lord, 'defenders');
+      vassalsOf(d).forEach(function (v) { if (!sideOf(war, v)) joinWar(war, v, 'defenders'); });
+    });
   }
 
   function checkDeclareWar(a, b) {
     var ca = S.country(a), cb = S.country(b);
     if (a === b) return 'Nie można wypowiedzieć wojny samemu sobie.';
     if (!ca || !cb || !ca.alive || !cb.alive) return 'Państwo nie istnieje.';
+    if (overlordOf(b) === a) return name(b) + ' jest twoim wasalem.';
+    if (overlordOf(a) === b) return name(b) + ' jest twoim suzerenem.';
+    if (overlordOf(a)) return 'Wasal nie wypowiada wojen samodzielnie (suzeren: ' + name(overlordOf(a)) + ').';
     if (atWar(a, b)) return 'Już jesteście w stanie wojny.';
     if (allied(a, b)) return 'Jesteście w sojuszu — najpierw go zerwij.';
     var truce = findTreaty(G().truces, a, b);
@@ -149,6 +171,7 @@ WT.diplomacy = (function () {
     reindex();
     S.addLog(name(cc) + ' przystępuje do wojny po stronie ' + name(war[side][0]) + '.', cc);
     WT.events.emit('war', { war: war, joined: cc, side: side });
+    vassalsOf(cc).forEach(function (v) { if (!sideOf(war, v)) joinWar(war, v, side); });
     return true;
   }
 
@@ -202,6 +225,7 @@ WT.diplomacy = (function () {
   function recordLosses(a, b, lostA, lostB) {
     var war = warBetween(a, b);
     if (war) { war.losses[a] = (war.losses[a] || 0) + lostA; war.losses[b] = (war.losses[b] || 0) + lostB; }
+    if (war && V()) V().onBattle(a, b, lostA, lostB);
     S.country(a).losses += lostA; S.country(b).losses += lostB;
   }
 
@@ -224,6 +248,9 @@ WT.diplomacy = (function () {
     var war = warBetween(from, to);
     if (!war) return { accepted: false, reason: 'Nie jesteście w stanie wojny.' };
     if (['white', 'annex', 'demand'].indexOf(type) < 0) return { accepted: false, reason: 'Nieznany typ pokoju.' };
+    var lord = overlordOf(to);
+    if (lord && atWar(from, lord)) return { accepted: false, reason: 'Negocjuj z suzerenem: ' + name(lord) + ' (wasal zawiera pokój razem z nim).' };
+    if (overlordOf(from) && atWar(overlordOf(from), to)) return { accepted: false, reason: 'Pokój zawiera suzeren: ' + name(overlordOf(from)) + '.' };
     if (isPlayer(to)) {
       addProposal(from, to, 'peace', { kind: type, winner: type === 'white' ? null : from });
       return { accepted: false, reason: 'Propozycja przekazana graczowi.' };
@@ -258,13 +285,14 @@ WT.diplomacy = (function () {
    * Zawarcie pokoju między a i b. kind: white | annex | demand; winner: cc zwycięzcy (dla annex/demand).
    * Jeśli obaj są liderami — kończy całą wojnę; inaczej odrębny pokój wychodzącego uczestnika.
    */
-  function concludePeace(a, b, kind, winner) {
+  function concludePeace(a, b, kind, winner, terms) {
     var war = warBetween(a, b);
     if (!war) return false;
     var loser = winner ? (winner === a ? b : a) : null;
     var winSide = winner ? sideOf(war, winner) : null;
     if (kind === 'annex' && loser) annexOccupied(war, loser, winSide);
     if (kind === 'demand' && loser) payReparations(loser, winner);
+    if (kind === 'treaty' && loser && V()) V().applyTreaty(winner, loser, terms);
     var exiting = exitingParticipants(war, a, b);
     signTruces(war, exiting);
     removeFromWar(war, exiting);
@@ -278,8 +306,10 @@ WT.diplomacy = (function () {
 
   function exitingParticipants(war, a, b) {
     if (isLeader(war, a) && isLeader(war, b)) return war.attackers.concat(war.defenders);
-    if (!isLeader(war, a)) return [a];
-    return [b];
+    var out = [isLeader(war, a) ? b : a];
+    // wasale wychodzą z wojny razem z suzerenem (także nowy wasal razem z dotychczasowymi)
+    [a, b].forEach(function (x) { vassalsOf(x).forEach(function (v) { if (out.indexOf(x) >= 0 && sideOf(war, v) && out.indexOf(v) < 0) out.push(v); }); });
+    return out;
   }
 
   function annexOccupied(war, loser, winSide) {
@@ -318,7 +348,7 @@ WT.diplomacy = (function () {
   }
 
   function logPeace(a, b, kind, winner) {
-    var txt = { white: 'biały pokój', annex: 'pokój z aneksją okupowanych ziem', demand: 'pokój z reparacjami' }[kind];
+    var txt = { white: 'biały pokój', annex: 'pokój z aneksją okupowanych ziem', demand: 'pokój z reparacjami', treaty: 'traktat pokojowy' }[kind];
     S.addLog('Pokój: ' + name(a) + ' – ' + name(b) + ' (' + txt + (winner ? ', zwycięzca: ' + name(winner) : '') + ').', a);
   }
 
@@ -385,7 +415,8 @@ WT.diplomacy = (function () {
   function proposeAlliance(a, b) {
     var err = checkPair(a, b);
     if (err) return { accepted: false, reason: err };
-    if (allied(a, b)) return { accepted: false, reason: 'Już jesteście sojusznikami.' };
+    if (allied(a, b)) return { accepted: false, reason: overlordOf(a) === b || overlordOf(b) === a ? 'Wasal i suzeren już walczą razem.' : 'Już jesteście sojusznikami.' };
+    if (overlordOf(a) || overlordOf(b)) return { accepted: false, reason: 'Wasal nie zawiera własnych sojuszy (decyduje suzeren).' };
     if (atWar(a, b)) return { accepted: false, reason: 'Jesteście w stanie wojny.' };
     if (isPlayer(b)) { addProposal(a, b, 'alliance', {}); return { accepted: false, reason: 'Propozycja przekazana graczowi.' }; }
     var verdict = evaluateAlliance(b, a);
@@ -432,6 +463,7 @@ WT.diplomacy = (function () {
     var err = checkPair(a, b);
     if (err) return { accepted: false, reason: err };
     if (hasPact(a, b)) return { accepted: false, reason: 'Pakt już obowiązuje.' };
+    if (overlordOf(a) || overlordOf(b)) return { accepted: false, reason: 'Wasal nie zawiera własnych paktów (decyduje suzeren).' };
     if (atWar(a, b)) return { accepted: false, reason: 'Jesteście w stanie wojny.' };
     if (isPlayer(b)) { addProposal(a, b, 'pact', {}); return { accepted: false, reason: 'Propozycja przekazana graczowi.' }; }
     var rel = relation(a, b), fear = power(a) > 1.5 * power(b);
@@ -722,6 +754,7 @@ WT.diplomacy = (function () {
     G().truces = G().truces.filter(function (x) { return x.until > t; });
     G().proposals = G().proposals.filter(function (p) { return t - p.turn < PROPOSAL_TTL; });
     G().wars.forEach(warScore);
+    if (V()) V().processTurn();
     pruneTrades();
     refreshCountries();
   }

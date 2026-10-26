@@ -310,6 +310,7 @@ WT.naval = (function () {
     var r = { attacker: f.owner, defender: defender, prov: provId, killed: killed, devLoss: U.round(devBefore - p.dev, 3), fortHit: fortHit, sunk: sunk, ships: f.gunships + sunk };
     logShelling(r);
     WT.events.emit('shelling', r);
+    if (WT.vassal) WT.vassal.onShelling(r);
     if (isEmptyFleet(f)) S.removeFleet(f.id);
     return r;
   }

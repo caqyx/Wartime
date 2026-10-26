@@ -1,7 +1,7 @@
 /* Testy logiki gry w node (bez frameworków): `node tests/run_tests.js` */
 var path = require('path');
 var ROOT = path.join(__dirname, '..');
-var CORE = ['util', 'state', 'economy', 'diplomacy', 'military', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
+var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'military', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
 CORE.forEach(function (m) { require(path.join(ROOT, 'js/core', m + '.js')); });
 var WT = global.WT;
 var mock = require('./mock_map.js');
@@ -804,6 +804,82 @@ test('strefy morskie: flota na morzu i ostrzał wskazanej prowincji w zasięgu',
   t.cargo.push(a.id); a.embarked = t.id;
   WT.naval.orderFleet(t.id, SEA); WT.naval.moveFleets();
   eq(a.prov, 14, 'armia na pokładzie w strefie: ostatnia prowincja lądowa');
+});
+
+test('punkty wojenne i traktat pokojowy: prowincje, reparacje, wasalizacja', function () {
+  freshGame();
+  var V = WT.vassal, D = WT.diplomacy;
+  D.startWar(['AAA'], ['BBB'], true);
+  var rej = V.proposeTreaty('AAA', 'BBB', { reparations: true });
+  eq(rej.accepted, false, 'bez punktów traktat odrzucony');
+  var bbb = WT.state.provincesOf('BBB');
+  assert(bbb.length >= 3, 'BBB ma prowincje');
+  bbb.slice(0, bbb.length - 1).forEach(function (id) { WT.state.setCtrl(id, 'AAA'); });
+  V.onBattle('AAA', 'BBB', 1000, 20000);
+  var pts = V.warPoints('AAA', 'BBB');
+  eq(pts.provinces.length, bbb.length - 1, 'prowincje do przejęcia');
+  eq(pts.damage, 8, 'punkty za zabitych (20 000 / 2500)');
+  eq(pts.total, pts.occupation + pts.damage, 'suma punktów');
+  var all = { provinces: pts.provinces.map(function (p) { return p.id; }), vassal: true };
+  assert(V.checkTreaty('AAA', 'BBB', { provinces: bbb, vassal: true }), 'wasal musi zachować prowincję');
+  var take = [pts.provinces[pts.provinces.length - 1].id];
+  var terms = { provinces: take, vassal: true, reparations: true };
+  assert(V.treatyCost('AAA', 'BBB', terms) <= V.acceptLimit('AAA', 'BBB'), 'koszt w limicie: ' + V.treatyCost('AAA', 'BBB', terms) + ' / ' + V.acceptLimit('AAA', 'BBB'));
+  var ok = V.proposeTreaty('AAA', 'BBB', terms);
+  assert(ok.accepted, 'traktat przyjęty: ' + ok.reason);
+  assert(!D.atWar('AAA', 'BBB'), 'koniec wojny');
+  eq(G().provinces[take[0]].owner, 'AAA', 'przejęta prowincja');
+  eq(V.overlordOf('BBB'), 'AAA', 'BBB jest wasalem AAA');
+  eq(V.reparationsOf('BBB').length, 1, 'reparacje zapisane');
+  assert(all.provinces.length > 1, 'sanity');
+  WT.state.provincesOf('BBB').forEach(function (id) { eq(G().provinces[id].ctrl, 'BBB', 'okupacje zwrócone'); });
+  // trybut i reparacje co turę
+  G().countries.BBB.lastIncome = 10; G().countries.BBB.treasury = 50;
+  var t0 = G().countries.AAA.treasury;
+  V.processTurn();
+  assert(Math.abs(G().countries.AAA.treasury - t0 - 10 * (V.DEFAULT_TRIBUTE + V.REPARATIONS_PCT)) < 1e-6, 'trybut 15% + reparacje 20%');
+  // wasal w polityce suzerena
+  assert(D.checkDeclareWar('AAA', 'BBB'), 'nie można zaatakować własnego wasala');
+  assert(D.checkDeclareWar('BBB', 'CCC'), 'wasal nie wypowiada wojen');
+  assert(D.friendly('AAA', 'BBB'), 'wasal = przejście jak sojusznik');
+  WT.diplomacy.setRel('CCC', 'AAA', -80);
+  G().truces = [];
+  assert(D.declareWar('CCC', 'AAA').ok, 'wojna z suzerenem');
+  assert(D.atWar('CCC', 'BBB'), 'wasal dołącza do obrony suzerena');
+  D.concludePeace('CCC', 'AAA', 'white', null);
+  assert(!D.atWar('CCC', 'BBB'), 'wasal wychodzi z wojny razem z suzerenem');
+  // kontrola wasala
+  var m = V.takeMoney('AAA', 'BBB', 20);
+  assert(m.ok && Math.abs(G().countries.BBB.treasury - (50 - 10 * (V.DEFAULT_TRIBUTE + V.REPARATIONS_PCT) - 20)) < 1e-6, 'zabrano pieniądze: ' + m.reason);
+  eq(V.setTribute('AAA', 'BBB', 0.9).ok, true, 'trybut');
+  eq(G().countries.BBB.tribute, V.MAX_TRIBUTE, 'trybut ograniczony do maks.');
+  var vt = V.vassalTroops('BBB'), aaa0 = soldiers('AAA');
+  var tr = V.takeTroops('AAA', 'BBB', 5000);
+  assert(tr.ok, 'przejęcie wojska: ' + tr.reason);
+  eq(soldiers('AAA') - aaa0, vt - V.vassalTroops('BBB'), 'żołnierze przeszli do suzerena');
+  eq(V.canAnnex('AAA', 'BBB').ok, false, 'przyłączenie dopiero po ' + V.ANNEX_AFTER + ' turach');
+  G().turn += V.ANNEX_AFTER; G().countries.AAA.treasury = 1e4;
+  var an = V.annex('AAA', 'BBB');
+  assert(an.ok, 'przyłączenie: ' + an.reason);
+  eq(WT.state.provincesOf('BBB').length, 0, 'BBB bez prowincji');
+  eq(G().countries.BBB.alive, false, 'BBB przestaje istnieć');
+  assertConsistent();
+});
+
+test('wasale AI: suzeren zwycięża i wasalizuje upadłego wroga', function () {
+  freshGame({ player: 'ISL' });
+  var V = WT.vassal, D = WT.diplomacy;
+  D.startWar(['AAA'], ['CCC'], true);
+  WT.state.provincesOf('CCC').forEach(function (id, i, arr) { if (i < arr.length - 1 || G().countries.CCC.capital === id) WT.state.setCtrl(id, 'AAA'); });
+  G().wars[0].start = G().turn - 10;
+  var war = G().wars[0];
+  D.warScore(war);
+  var pts = V.warPoints('AAA', 'CCC').total;
+  assert(pts > 0, 'punkty AI');
+  for (var i = 0; i < 30 && D.atWar('AAA', 'CCC'); i++) WT.ai.runAll();
+  assert(!D.atWar('AAA', 'CCC'), 'AI zawarło pokój');
+  assert(G().log.some(function (l) { return /Traktat|Pokój/.test(l.text); }), 'wpis o pokoju');
+  assertConsistent();
 });
 
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {

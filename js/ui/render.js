@@ -156,6 +156,7 @@
     var cc = ownerOf(id);
     if (!g || !me) return countryColor(cc);
     if (cc === me) return '#d9b86a';
+    if (WT.vassal && (WT.vassal.overlordOf(cc) === me || WT.vassal.overlordOf(me) === cc)) return '#a585f0';
     var D = WT.diplomacy || {};
     if (D.atWar && safeBool(D.atWar, me, cc)) return COLORS.war;
     if (D.allied && safeBool(D.allied, me, cc)) return COLORS.ally;

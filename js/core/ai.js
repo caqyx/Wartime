@@ -364,9 +364,38 @@ WT.ai = (function () {
 
   function negotiateWithAi(cc, partner, my, age) {
     var ex = S.country(cc).warExhaustion;
+    if (my >= 40 && age >= 4 && proposeAiTreaty(cc, partner)) return;
     if (my >= 40 && age >= 4) D().proposePeace(cc, partner, 'annex');
     else if (my >= 25 && age >= 20) D().proposePeace(cc, partner, 'demand');
     else if ((my <= 10 && age >= 15) || ex >= 60 || age > 52) D().proposePeace(cc, partner, 'white');
+  }
+
+  /**
+   * Zwycięskie AI układa traktat jak gracz: okupowane prowincje (od najcenniejszych), przy upadku wroga
+   * (utracona stolica, >50% ziem) wasalizacja, za resztę punktów reparacje/kontrybucja.
+   */
+  function proposeAiTreaty(cc, partner) {
+    var V = WT.vassal;
+    if (!V || partner === G().player) return false;
+    var pts = V.warPoints(cc, partner), limit = V.acceptLimit(cc, partner);
+    if (pts.total <= 0) return false;
+    var terms = { provinces: [] }, budget = limit;
+    var collapse = D().capitalLost(partner) && D().occupiedShare(partner) > 0.5;
+    var keep = S.provincesOf(partner).length;
+    if (collapse && keep > 1 && U.chance(0.6)) {
+      // wasal: zostawia mu większość ziem, bierze tylko to, na co starczy punktów po wasalizacji
+      var vc = V.vassalCost(partner, []);
+      if (vc <= budget) { terms.vassal = true; budget -= vc; }
+    }
+    pts.provinces.forEach(function (p) {
+      if (keep - terms.provinces.length <= 1) return;
+      var extra = terms.vassal ? Math.max(0, V.vassalCost(partner, terms.provinces.concat([p.id])) - V.vassalCost(partner, terms.provinces)) : 0;
+      if (p.value + extra <= budget) { terms.provinces.push(p.id); budget -= p.value + extra; }
+    });
+    if (budget >= V.COST.reparations) { terms.reparations = true; budget -= V.COST.reparations; }
+    if (budget >= V.COST.contribution) terms.contribution = true;
+    if (!terms.provinces.length && !terms.vassal) return false;
+    return V.proposeTreaty(cc, partner, terms).accepted;
   }
 
   function offerPeaceToPlayer(cc, player, war, my, age) {

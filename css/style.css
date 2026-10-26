@@ -913,3 +913,34 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .shell-head .dim { margin-left: auto; font-size: var(--fs-xs); }
 .shell-target { margin-top: 4px; font-size: var(--fs-sm); color: var(--text-2); }
 .shell-box .row-actions { margin-top: 6px; }
+
+/* ---------- Wasale, punkty wojenne, konferencja pokojowa ---------- */
+.tag.vassal { background: oklch(70% 0.14 295 / 0.16); color: oklch(85% 0.10 295); border-color: oklch(70% 0.14 295 / 0.4); }
+.war-points { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 10px; border-radius: var(--r-sm); background: oklch(80% 0.12 85 / 0.08); border: 1px solid oklch(80% 0.12 85 / 0.25); font-size: var(--fs-sm); color: var(--text-2); }
+.war-points b { color: oklch(88% 0.11 85); font-size: var(--fs-md); }
+.war-points .wp-ico .ico { width: 15px; height: 15px; color: oklch(85% 0.12 85); }
+.section-title .ico { width: 14px; height: 14px; vertical-align: -2px; color: oklch(80% 0.12 295); }
+.vas-row { display: grid; grid-template-columns: 70px 1fr auto auto; align-items: center; gap: 8px; margin-top: 8px; }
+.vas-row .vas-lbl { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); }
+.vas-row .num { min-width: 70px; text-align: right; font-size: var(--fs-sm); }
+.vas-row #vas-trib-val { grid-column: span 2; text-align: left; }
+.conf-head { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.conf-head > div { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--r-sm); background: rgba(3, 6, 12, 0.3); border: 1px solid var(--stroke-1); }
+.conf-head .lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); }
+.conf-head b { font-size: 22px; font-weight: 750; color: var(--text-1); }
+.conf-head b.pos { color: var(--ok, #3ec27f); } .conf-head b.neg { color: #ff8a84; }
+.conf-head .sub { font-size: var(--fs-xs); color: var(--text-3); }
+.conf-bar { height: 6px; margin: 10px 0 12px; border-radius: 3px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
+.conf-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--acc-500), var(--acc-300)); transition: width var(--dur-2); }
+.conf-bar.over i { background: linear-gradient(90deg, #c2413c, #ff8a84); }
+.conf-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.conf-col .section-title { display: flex; align-items: center; gap: 6px; }
+.conf-sel { margin-left: auto; display: flex; gap: 4px; }
+.conf-list { max-height: 300px; overflow-y: auto; padding-right: 4px; }
+.conf-item { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 4px 8px; border-radius: var(--r-sm); cursor: pointer; font-size: var(--fs-sm); color: var(--text-1); }
+.conf-item:hover { background: var(--glass-fill-hover); }
+.conf-item > span:first-of-type { flex: 1; min-width: 0; }
+.conf-item small { display: block; font-size: var(--fs-xs); color: var(--text-3); }
+.conf-item .num { color: oklch(88% 0.11 85); font-weight: 650; white-space: nowrap; }
+.conf-item.disabled { opacity: 0.5; cursor: default; }
+@media (max-width: 700px) { .conf-cols, .conf-head { grid-template-columns: 1fr; } .conf-head b { font-size: 18px; } }

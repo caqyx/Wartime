@@ -145,13 +145,18 @@
     const p = me(); if (!p) return '';
     if (cc === p) return '<span class="tag self">Ty</span>';
     let t = '';
+    const lordOfCC = overlordOf(cc), vassalLink = lordOfCC === p || overlordOf(p) === cc;
+    if (lordOfCC === p) t += '<span class="tag vassal">Twój wasal</span>';
+    else if (overlordOf(p) === cc) t += '<span class="tag vassal">Suzeren</span>';
     if (atWar(p, cc)) t += '<span class="tag war">Wojna</span>';
-    if (allied(p, cc)) t += '<span class="tag ally">Sojusz</span>';
+    if (allied(p, cc) && !vassalLink) t += '<span class="tag ally">Sojusz</span>';
     if (hasPact(p, cc)) t += '<span class="tag pact">Pakt</span>';
     if (hasTruce(p, cc)) t += '<span class="tag truce">Rozejm</span>';
     if (call('diplomacy.hasTrade', [p, cc], false)) t += '<span class="tag trade">Handel</span>';
     return t;
   }
+  // Wasale (WT.vassal)
+  function overlordOf(cc) { return WT.vassal && cc ? WT.vassal.overlordOf(cc) : null; }
   function relClass(v) { return v > 15 ? 'pos' : v < -15 ? 'neg' : 'dim'; }
   function swatch(cc) { return '<span class="swatch" style="background:' + esc(countryColor(cc)) + '"></span>'; }
 
@@ -197,6 +202,8 @@
     flask: '<path d="M9.5 3.5h5M10.5 3.5v5.5L5 18.5A1.6 1.6 0 0 0 6.4 21h11.2a1.6 1.6 0 0 0 1.4-2.5L13.5 9V3.5"/><path d="M7.5 14.5h9"/>',
     university: '<path d="M3 9.5L12 5l9 4.5-9 4.5z"/><path d="M6.5 11.3V16c0 1.5 2.5 3 5.5 3s5.5-1.5 5.5-3v-4.7"/><path d="M21 9.5V15"/>',
     trade: '<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>',
+    crown: '<path d="M3.5 8.5l4.5 4L12 5.5l4 7 4.5-4-2 10.5h-13z"/><path d="M6 21h12"/>',
+    scroll: '<path d="M8 4h10a2 2 0 0 1 2 2v1.5h-4"/><path d="M16 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1.5h10"/><path d="M8 4a2 2 0 0 0-2 2v11"/><path d="M9.5 9h3.5M9.5 12.5h3.5"/>',
     trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H4.5a3 3 0 0 0 3.5 4M16 6h3.5a3 3 0 0 1-3.5 4"/><path d="M12 13v4M8.5 20.5h7M9.5 17h5"/>',
     select: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17.5l2 2 4.5-4.5"/>',
     mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/>'
@@ -639,7 +646,7 @@
   function renderLegend() {
     const m = R().getMode(), el = $('legend');
     let html = '';
-    if (m === 'diplomatic') html = legendItem('#d9b86a', 'Ty') + legendItem('#5b8def', 'Sojusznik') + legendItem('#3fb8b0', 'Pakt') + legendItem('#e5484d', 'Wojna') +
+    if (m === 'diplomatic') html = legendItem('#d9b86a', 'Ty') + legendItem('#a585f0', 'Wasal') + legendItem('#5b8def', 'Sojusznik') + legendItem('#3fb8b0', 'Pakt') + legendItem('#e5484d', 'Wojna') +
       '<span class="li">Relacje <span class="grad" style="background:linear-gradient(90deg,#94464a,#5d6673,#3f9466)"></span></span>';
     else if (m === 'economic') html = '<span class="li">Rozwój i fabryki: niski <span class="grad" style="background:linear-gradient(90deg,#262a4a,#2c7d78,#d6e06c)"></span> wysoki</span>';
     else if (m === 'terrain') html = [['#8fa865', 'plains'], ['#a99a63', 'hills'], ['#867a70', 'mountains'], ['#4e7a4c', 'forest'], ['#cdb882', 'desert'], ['#a3b2b8', 'tundra'], ['#33735a', 'jungle']]
@@ -1207,19 +1214,135 @@
       '<span class="k">PKB (start)</span><span class="v">' + (c.startGdp != null ? fmtInt(c.startGdp) + ' mld $' : d.gdp != null ? fmtInt(d.gdp) + ' mld $' : '—') + '</span>' +
       '<span class="k">Armia</span><span class="v">' + fmtInt(armySum) + '</span>' +
       '<span class="k">Prowincje</span><span class="v">' + provincesOf(cc).length + '</span>' +
-      '<span class="k">Stabilność</span><span class="v">' + Math.round(c.stability || 0) + '%</span></div>';
+      '<span class="k">Stabilność</span><span class="v">' + Math.round(c.stability || 0) + '%</span>' +
+      (overlordOf(cc) ? '<span class="k">Suzeren</span><span class="v txt">' + swatch(overlordOf(cc)) + esc(countryName(overlordOf(cc))) + '</span>' : '') + '</div>';
+    if (war && WT.vassal) h += warPointsLineHtml(cc);
+    const vassalLink = overlordOf(cc) === p || overlordOf(p) === cc;
     const impCost = has('diplomacy.improveRelationsCost') ? call('diplomacy.improveRelationsCost', [p], 1) : 1 + 0.001 * (staticCountry(p).gdp || 0);
     h += '<div class="action-grid" style="margin-top:10px">';
-    h += war ? '<button class="btn btn-ok" data-dip="peace-white">Biały pokój</button><button class="btn btn-ok" data-dip="peace-annex">Pokój: aneksja</button>'
-      : '<button class="btn btn-danger" data-dip="war"' + (truce ? ' disabled title="Obowiązuje rozejm"' : '') + '>Wypowiedz wojnę</button>';
-    h += ally ? '<button class="btn" data-dip="break">Zerwij sojusz</button>' : '<button class="btn" data-dip="alliance"' + (war ? ' disabled' : '') + '>Zaproponuj sojusz</button>';
-    if (!pact) h += '<button class="btn" data-dip="pact"' + (war ? ' disabled' : '') + '>Pakt o nieagresji</button>';
+    h += war ? '<button class="btn btn-ok" data-dip="peace-white">Biały pokój</button>' +
+        (WT.vassal ? '<button class="btn btn-primary" data-dip="conference">Konferencja pokojowa</button>' : '<button class="btn btn-ok" data-dip="peace-annex">Pokój: aneksja</button>')
+      : vassalLink ? '' : '<button class="btn btn-danger" data-dip="war"' + (truce ? ' disabled title="Obowiązuje rozejm"' : '') + '>Wypowiedz wojnę</button>';
+    if (!vassalLink) {
+      h += ally ? '<button class="btn" data-dip="break">Zerwij sojusz</button>' : '<button class="btn" data-dip="alliance"' + (war ? ' disabled' : '') + '>Zaproponuj sojusz</button>';
+      if (!pact) h += '<button class="btn" data-dip="pact"' + (war ? ' disabled' : '') + '>Pakt o nieagresji</button>';
+    }
     h += call('diplomacy.hasTrade', [p, cc], false) ? '<button class="btn" data-dip="trade-cancel">Zerwij handel</button>'
       : '<button class="btn" data-dip="trade"' + (war ? ' disabled' : '') + ' title="+3% dochodu dla obu stron; wymaga relacji ≥ 15">Umowa handlowa</button>';
     h += '<button class="btn" data-dip="improve" title="Koszt ok. ' + fmtNum(impCost, 1) + ' mld $">Popraw relacje</button>';
     h += '<button class="btn" data-dip="insult">Obraź</button>';
     h += '<button class="btn btn-ghost" data-dip="show">Pokaż na mapie</button>';
-    return h + '</div>' + countryWarsHtml(cc) + aidSectionHtml(cc) + '</div>';
+    return h + '</div>' + countryWarsHtml(cc) + reparationsHtml(cc) + vassalSectionHtml(cc) + aidSectionHtml(cc) + '</div>';
+  }
+
+  // ===========================================================================
+  // Punkty wojenne, konferencja pokojowa, wasale
+  // ===========================================================================
+  function warPointsLineHtml(cc) {
+    const pts = WT.vassal.warPoints(me(), cc), lim = WT.vassal.acceptLimit(me(), cc);
+    return '<div class="war-points"><span class="wp-ico">' + icon('trophy') + '</span><span>Punkty wojenne: <b class="num">' + pts.total + '</b>' +
+      '<span class="dim"> · okupacja ' + pts.occupation + ' + zniszczenia ' + pts.damage + (lim > pts.total ? ' · zmęczenie wroga: limit ' + lim : '') + '</span></span></div>';
+  }
+  function reparationsHtml(cc) {
+    if (!WT.vassal) return '';
+    const p = me(), list = WT.vassal.reparationsOf(cc).filter((r) => (r.from === cc && r.to === p) || (r.from === p && r.to === cc));
+    if (!list.length) return '';
+    return '<div class="kv" style="margin-top:8px">' + list.map((r) => '<span class="k">Reparacje</span><span class="v txt">' +
+      (r.from === cc ? esc(countryName(cc)) + ' płaci tobie' : 'Płacisz: ' + esc(countryName(cc))) + ' ' + Math.round(r.pct * 100) + '% dochodu' +
+      (r.paid ? ' (' + fmtNum(r.paid, 2) + ' mld/tura)' : '') + ' · do tury ' + r.until + '</span>').join('') + '</div>';
+  }
+  function vassalSectionHtml(cc) {
+    const V = WT.vassal;
+    if (!V || overlordOf(cc) !== me()) return '';
+    const c = liveCountry(cc), trib = Math.round((c.tribute != null ? c.tribute : V.DEFAULT_TRIBUTE) * 100);
+    const mMax = Math.max(0, Math.floor(c.treasury || 0)), tMax = Math.floor(V.vassalTroops(cc) / 1000);
+    S.vasMoney = Math.max(1, Math.min(S.vasMoney || 10, Math.max(1, mMax)));
+    S.vasTroopsK = Math.max(5, Math.min(S.vasTroopsK || 20, Math.max(5, tMax)));
+    const an = V.canAnnex(me(), cc);
+    let h = '<div class="section-title" style="margin-top:12px">' + icon('crown') + ' Zarządzanie wasalem</div>';
+    h += '<div class="kv"><span class="k">Wasal od</span><span class="v">tury ' + (c.vassalSince != null ? c.vassalSince : '?') + '</span>' +
+      '<span class="k">Skarbiec wasala</span><span class="v">' + fmtBn(c.treasury || 0) + '</span>' +
+      '<span class="k">Trybut ostatnio</span><span class="v">' + fmtNum(c.tributePaid || 0, 2) + ' mld $</span>' +
+      '<span class="k">Wojsko wasala</span><span class="v">' + fmtInt(V.vassalTroops(cc)) + '</span></div>';
+    h += '<div class="vas-row"><span class="vas-lbl">Trybut</span><input type="range" id="vas-trib" min="0" max="' + Math.round(V.MAX_TRIBUTE * 100) + '" step="5" value="' + trib + '"><span class="num" id="vas-trib-val">' + trib + '% dochodu</span></div>';
+    h += '<div class="vas-row"><span class="vas-lbl">Pieniądze</span><input type="range" id="vas-money" min="1" max="' + Math.max(1, mMax) + '" value="' + S.vasMoney + '"' + (mMax < 1 ? ' disabled' : '') + '>' +
+      '<span class="num" id="vas-money-val">' + fmtInt(S.vasMoney) + ' mld $</span><button class="btn btn-sm btn-ok" id="vas-money-go"' + (mMax < 1 ? ' disabled title="Pusty skarbiec"' : '') + '>Zabierz</button></div>';
+    h += '<div class="vas-row"><span class="vas-lbl">Wojsko</span><input type="range" id="vas-troops" min="5" max="' + Math.max(5, tMax) + '" value="' + S.vasTroopsK + '"' + (tMax < 5 ? ' disabled' : '') + '>' +
+      '<span class="num" id="vas-troops-val">' + fmtInt(S.vasTroopsK) + ' tys.</span><button class="btn btn-sm btn-ok" id="vas-troops-go"' + (tMax < 5 ? ' disabled title="Wasal ma za mało wojska"' : '') + '>Przejmij</button></div>';
+    h += '<div class="row-actions"><button class="btn btn-sm btn-primary" id="vas-annex"' + (an.ok ? '' : ' disabled') + ' title="' + esc(an.reason || '') + '">Przyłącz' + (an.ok ? ' (' + fmtBn(an.cost) + ')' : '') + '</button>' +
+      '<button class="btn btn-sm" id="vas-release">Uwolnij</button></div>' +
+      '<div class="hint">' + (an.ok ? '' : esc(an.reason) + ' ') + 'Wasal płaci trybut co turę, walczy w twoich wojnach (dołącza automatycznie) i nie prowadzi własnej polityki. Zabieranie pieniędzy i wojska obniża jego relacje z tobą.</div>';
+    return h;
+  }
+  function bindVassalSection(cc) {
+    const V = WT.vassal, tr = $('vas-trib'); if (!V || !tr) return;
+    const p = me(), after = () => { R().invalidate(); refreshAll(); };
+    tr.addEventListener('input', () => { $('vas-trib-val').textContent = tr.value + '% dochodu'; });
+    tr.addEventListener('change', () => { resultToast(V.setTribute(p, cc, tr.value / 100)); });
+    const m = $('vas-money'), t = $('vas-troops');
+    m.addEventListener('input', () => { S.vasMoney = +m.value; $('vas-money-val').textContent = fmtInt(S.vasMoney) + ' mld $'; });
+    t.addEventListener('input', () => { S.vasTroopsK = +t.value; $('vas-troops-val').textContent = fmtInt(S.vasTroopsK) + ' tys.'; });
+    $('vas-money-go').addEventListener('click', () => { resultToast(V.takeMoney(p, cc, S.vasMoney)); after(); });
+    $('vas-troops-go').addEventListener('click', () => { resultToast(V.takeTroops(p, cc, S.vasTroopsK * 1000)); after(); });
+    $('vas-annex').addEventListener('click', () => confirmModal('Przyłączenie wasala', 'Przyłączyć <b>' + esc(countryName(cc)) + '</b>? Jego prowincje, armie i floty staną się twoje.', 'Przyłącz', () => {
+      resultToast(V.annex(p, cc)); S.diploCC = null; after();
+    }));
+    $('vas-release').addEventListener('click', () => confirmModal('Uwolnienie wasala', 'Uwolnić <b>' + esc(countryName(cc)) + '</b>? Przestanie płacić trybut i walczyć w twoich wojnach.', 'Uwolnij', () => {
+      resultToast(V.release(p, cc)); after();
+    }, true));
+  }
+
+  /** Konferencja pokojowa (jak w AoH2): wybór warunków za punkty wojenne, podgląd żądanych prowincji na mapie. */
+  function openConference(cc) {
+    const V = WT.vassal, p = me();
+    if (!V || !atWar(p, cc)) return;
+    const err0 = V.checkTreaty(p, cc, { contribution: true });
+    if (err0 && !/Wybierz/.test(err0)) { toast(err0, 'bad', 3500); return; }
+    const pts = V.warPoints(p, cc), lim = V.acceptLimit(p, cc);
+    const T = { provinces: [], contribution: false, reparations: false, disarm: false, vassal: false };
+    const sync = () => { R().view.multi = T.provinces.slice(); R().requestDraw(); };
+    const render = (el) => {
+      const cost = V.treatyCost(p, cc, T), err = V.checkTreaty(p, cc, T), over = cost > lim;
+      const vasErr = V.checkTreaty(p, cc, Object.assign({}, T, { vassal: true }));
+      const pct = lim > 0 ? Math.min(100, Math.round(100 * cost / lim)) : 100;
+      let h = '<div class="conf-head"><div><span class="lbl">Twoje punkty</span><b class="num">' + pts.total + '</b><span class="sub">okupacja ' + pts.occupation + ' · zniszczenia ' + pts.damage + '</span></div>' +
+        '<div><span class="lbl">Limit (zmęczenie wroga)</span><b class="num">' + lim + '</b><span class="sub">zmęczenie wojną ' + Math.round(liveCountry(cc).warExhaustion || 0) + '%</span></div>' +
+        '<div><span class="lbl">Koszt warunków</span><b class="num ' + (over ? 'neg' : 'pos') + '">' + cost + '</b><span class="sub">' + (over ? 'za dużo — wróg odrzuci' : 'wróg przyjmie') + '</span></div></div>' +
+        '<div class="conf-bar' + (over ? ' over' : '') + '"><i style="width:' + pct + '%"></i></div>';
+      h += '<div class="conf-cols"><div class="conf-col"><div class="section-title">Prowincje (' + T.provinces.length + '/' + pts.provinces.length + ')' +
+        (pts.provinces.length ? '<span class="conf-sel"><button class="btn btn-sm btn-ghost" data-conf="all">Wszystkie</button><button class="btn btn-sm btn-ghost" data-conf="none">Żadna</button></span>' : '') + '</div><div class="conf-list">';
+      h += pts.provinces.length ? pts.provinces.map((x) => '<label class="conf-item"><input type="checkbox" data-prov="' + x.id + '"' + (T.provinces.indexOf(x.id) >= 0 ? ' checked' : '') + '><span>' + esc(provStatic(x.id).name) + '</span><span class="num">' + x.value + ' pkt</span></label>').join('')
+        : '<div class="hint">Nie okupujesz prowincji tego państwa. Zajmij je wojskiem, aby móc ich żądać i zdobyć punkty.</div>';
+      h += '</div></div><div class="conf-col"><div class="section-title">Warunki</div>';
+      const opt = (k, label, sub, c, dis) => '<label class="conf-item' + (dis ? ' disabled' : '') + '"><input type="checkbox" data-opt="' + k + '"' + (T[k] ? ' checked' : '') + (dis ? ' disabled' : '') + '><span>' + label + '<small>' + sub + '</small></span><span class="num">' + c + ' pkt</span></label>';
+      h += opt('vassal', 'Wasalizacja', vasErr && !/Wybierz/.test(vasErr) && !T.vassal ? vasErr : 'pełna kontrola: trybut, pieniądze, wojsko, przyłączenie', V.vassalCost(cc, T.provinces), !T.vassal && vasErr && !/Wybierz/.test(vasErr));
+      h += opt('reparations', 'Reparacje wojenne', Math.round(V.REPARATIONS_PCT * 100) + '% dochodu przez ' + V.REPARATIONS_TURNS + ' tur', V.COST.reparations, false);
+      h += opt('contribution', 'Kontrybucja', 'jednorazowo połowa skarbca (' + fmtBn(Math.max(0, liveCountry(cc).treasury || 0) / 2) + ')', V.COST.contribution, false);
+      h += opt('disarm', 'Rozbrojenie', 'armia wroga −60%', V.COST.disarm, false);
+      h += '<div class="hint" style="margin-top:8px">Punkty: każda okupowana prowincja (ludność, rozwój, stolica ×2) + zadane straty, naloty i ostrzał. Wróg przyjmie traktat, gdy koszt ≤ limit.</div></div></div>';
+      if (err && !/Wybierz/.test(err)) h += '<div class="reason">' + esc(err) + '</div>';
+      el.querySelector('#conf-body').innerHTML = h;
+      const go = el.querySelector('#conf-go'); if (go) go.disabled = !!err || over;
+      el.querySelectorAll('[data-prov]').forEach((b) => b.addEventListener('change', () => {
+        const id = +b.dataset.prov;
+        T.provinces = b.checked ? T.provinces.concat([id]) : T.provinces.filter((x) => x !== id);
+        sync(); render(el);
+      }));
+      el.querySelectorAll('[data-opt]').forEach((b) => b.addEventListener('change', () => { T[b.dataset.opt] = b.checked; render(el); }));
+      el.querySelectorAll('[data-conf]').forEach((b) => b.addEventListener('click', () => {
+        T.provinces = b.dataset.conf === 'all' ? pts.provinces.map((x) => x.id) : [];
+        if (T.vassal && T.provinces.length >= provincesOf(cc).length) T.provinces.pop();
+        sync(); render(el);
+      }));
+    };
+    openModal({ title: icon('scroll') + ' Konferencja pokojowa: ' + esc(countryName(cc)), wide: true, body: '<div id="conf-body"></div>',
+      buttons: [{ label: 'Anuluj' }, { label: 'Zaproponuj traktat', cls: 'btn-primary', close: false, onClick: (close) => {
+        const res = V.proposeTreaty(p, cc, T);
+        resultToast(res, 'Traktat przyjęty');
+        if (res && res.accepted) { close(); R().invalidate(); refreshAll(); }
+      } }],
+      onOpen: (el) => { const b = el.querySelectorAll('.modal-foot .btn'); b[b.length - 1].id = 'conf-go'; render(el); },
+      onClose: () => { R().view.multi = S.multi ? S.multi.slice() : null; R().requestDraw(); } });
   }
   function warScoreFor(war, cc) {
     const side = (war.attackers || []).indexOf(cc) >= 0 ? 1 : -1;
@@ -1255,6 +1378,7 @@
     $('dip-list').addEventListener('click', (e) => { const it = e.target.closest('[data-cc]'); if (it) { S.diploCC = it.dataset.cc; renderDiplomacy(); } });
     panel.querySelectorAll('[data-dip]').forEach((b) => b.addEventListener('click', () => diploAction(b.dataset.dip, S.diploCC)));
     bindAidSection(S.diploCC);
+    bindVassalSection(S.diploCC);
     $('dip-nopacts').addEventListener('change', (e) => { settingsOf().autoRejectPacts = e.target.checked; toast(e.target.checked ? 'Pakty o nieagresji będą odrzucane automatycznie' : 'Propozycje paktów znów trafią do ciebie', '', 2200); });
   }
   function diploAction(act, cc) {
@@ -1269,6 +1393,7 @@
         return;
       case 'peace-white': resultToast(call('diplomacy.proposePeace', [p, cc, 'white'], null), 'Zawarto biały pokój'); break;
       case 'peace-annex': resultToast(call('diplomacy.proposePeace', [p, cc, 'annex'], null), 'Pokój: aneksja okupowanych prowincji'); break;
+      case 'conference': openConference(cc); return;
       case 'alliance': resultToast(call('diplomacy.proposeAlliance', [p, cc], null), 'Sojusz zawarty'); break;
       case 'break': resultToast(call('diplomacy.breakAlliance', [p, cc], null), 'Sojusz zerwany'); break;
       case 'pact': resultToast(call('diplomacy.proposePact', [p, cc], null), 'Pakt podpisany'); break;

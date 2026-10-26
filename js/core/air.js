@@ -212,6 +212,7 @@ WT.air = (function () {
     var report = { attacker: sq.owner, defender: defender, prov: provId, planes: hits + shot, shot: shot, hits: hits, devLoss: damage.devLoss, destroyed: damage.destroyed };
     logRaid(report);
     WT.events.emit('bombing', report);
+    if (WT.vassal) WT.vassal.onBombing(report);
     if (!hits) delete squads()[sq.id];
     return report;
   }
