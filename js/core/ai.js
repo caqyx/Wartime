@@ -336,6 +336,14 @@ WT.ai = (function () {
     if (staggered(i, 5)) seekAlliance(cc, ctx);
     if (staggered(i, WAR_CHECK_EVERY)) considerWar(cc, ctx);
     if (staggered(i, 10)) maybeOfferPactToPlayer(cc, ctx);
+    if (staggered(i, 10)) considerIndependence(cc);
+  }
+
+  /** Wasal AI silniejszy od suzerena, w złych relacjach i bez innych wojen, może ogłosić niepodległość. */
+  function considerIndependence(cc) {
+    var lord = WT.vassal && WT.vassal.overlordOf(cc);
+    if (!lord || D().enemiesOf(cc).length || D().relation(cc, lord) >= 10) return;
+    if (Mil().power(cc) > 1.2 * Mil().power(lord) && U.chance(0.15)) WT.vassal.declareIndependence(cc);
   }
 
   /** Państwo bojące się silniejszego sąsiada-gracza proponuje mu pakt o nieagresji. */
@@ -375,35 +383,21 @@ WT.ai = (function () {
    * (utracona stolica, >50% ziem) wasalizacja, za resztę punktów reparacje/kontrybucja.
    */
   function proposeAiTreaty(cc, partner) {
-    var V = WT.vassal;
-    if (!V || partner === G().player) return false;
-    var pts = V.warPoints(cc, partner), limit = V.acceptLimit(cc, partner);
-    if (pts.total <= 0) return false;
-    var terms = { provinces: [] }, budget = limit;
-    var collapse = D().capitalLost(partner) && D().occupiedShare(partner) > 0.5;
-    var keep = S.provincesOf(partner).length;
-    if (collapse && keep > 1 && U.chance(0.6)) {
-      // wasal: zostawia mu większość ziem, bierze tylko to, na co starczy punktów po wasalizacji
-      var vc = V.vassalCost(partner, []);
-      if (vc <= budget) { terms.vassal = true; budget -= vc; }
-    }
-    pts.provinces.forEach(function (p) {
-      if (keep - terms.provinces.length <= 1) return;
-      var extra = terms.vassal ? Math.max(0, V.vassalCost(partner, terms.provinces.concat([p.id])) - V.vassalCost(partner, terms.provinces)) : 0;
-      if (p.value + extra <= budget) { terms.provinces.push(p.id); budget -= p.value + extra; }
-    });
-    if (budget >= V.COST.reparations) { terms.reparations = true; budget -= V.COST.reparations; }
-    if (budget >= V.COST.contribution) terms.contribution = true;
-    if (!terms.provinces.length && !terms.vassal) return false;
-    return V.proposeTreaty(cc, partner, terms).accepted;
+    if (!WT.vassal || partner === G().player) return false;
+    var terms = WT.vassal.buildTerms(cc, partner, 0.6);
+    return !!terms && WT.vassal.proposeTreaty(cc, partner, terms).accepted;
   }
 
   function offerPeaceToPlayer(cc, player, war, my, age) {
     var c = S.country(cc);
     if (turn() - c.ai.lastProposal < 6) return;
     var collapse = D().capitalLost(cc) && D().occupiedShare(cc) > 0.5;
+    var playerCollapse = D().capitalLost(player) && D().occupiedShare(player) > 0.5;
     var p = null;
-    if (my >= 45) p = D().addProposal(cc, player, 'peace', { kind: 'annex', winner: cc });
+    // wygrywające AI żąda od gracza traktatu (prowincje, reparacje, przy upadku gracza — wasalizacja)
+    var terms = (my >= 45 || playerCollapse) && WT.vassal ? WT.vassal.buildTerms(cc, player, 0.85) : null;
+    if (terms) p = D().addProposal(cc, player, 'treaty', terms);
+    else if (my >= 45) p = D().addProposal(cc, player, 'peace', { kind: 'annex', winner: cc });
     else if (my <= -50 || collapse) p = D().addProposal(cc, player, 'peace', { kind: 'annex', winner: player });
     else if ((my <= -15 && age >= 10) || c.warExhaustion >= 60) p = D().addProposal(cc, player, 'peace', { kind: 'white', winner: null });
     if (p) c.ai.lastProposal = turn();

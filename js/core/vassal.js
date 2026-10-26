@@ -118,13 +118,13 @@ WT.vassal = (function () {
     if (!D().atWar(me, target)) return 'Nie jesteście w stanie wojny.';
     var lord = overlordOf(target);
     if (lord && D().atWar(me, lord)) return 'Negocjuj z suzerenem: ' + name(lord) + ' (wasal zawiera pokój razem z nim).';
+    if (overlordOf(me) && D().atWar(overlordOf(me), target)) return 'Pokój w tej wojnie zawiera twój suzeren: ' + name(overlordOf(me)) + '.';
     var provs = terms.provinces || [];
     for (var i = 0; i < provs.length; i++) {
       var p = G().provinces[provs[i]];
       if (!p || p.owner !== target || !heldBy(me, provs[i])) return 'Możesz żądać tylko prowincji wroga okupowanych przez ciebie lub twoich wasali.';
     }
     if (terms.vassal) {
-      if (isPlayer(target)) return 'Gracz nie może zostać wasalem.';
       if (overlordOf(me) === target) return 'Nie możesz zwasalizować własnego suzerena.';
       if (provs.length >= S.provincesOf(target).length) return 'Wasal musi zachować co najmniej jedną prowincję.';
     }
@@ -136,12 +136,73 @@ WT.vassal = (function () {
   function proposeTreaty(me, target, terms) {
     var err = checkTreaty(me, target, terms);
     if (err) return { accepted: false, reason: err };
-    if (isPlayer(target)) return { accepted: false, reason: 'Traktaty z graczem AI zawiera przez zwykłe propozycje pokoju.' };
+    if (isPlayer(target)) {
+      // gracz decyduje sam (okno propozycji); AI składa tylko warunki mieszczące się w limicie
+      var prop = D().addProposal(me, target, 'treaty', terms);
+      return { accepted: false, proposed: !!prop, reason: 'Żądania przekazane graczowi.' };
+    }
     var cost = treatyCost(me, target, terms), pts = warPoints(me, target).total, limit = acceptLimit(me, target);
     if (pts <= 0) return { accepted: false, reason: name(target) + ' odrzuca: nie masz punktów wojennych (zdobywaj prowincje i zadawaj straty).' };
     if (cost > limit) return { accepted: false, reason: name(target) + ' odrzuca: warunki kosztują ' + cost + ' pkt, a twoje punkty pozwalają na ' + limit + ' pkt.' };
     D().concludePeace(me, target, 'treaty', me, terms);
     return { accepted: true, reason: name(target) + ' przyjmuje traktat pokojowy (' + cost + ' z ' + limit + ' pkt).' };
+  }
+
+  /** Opis warunków traktatu (okno propozycji dla gracza, dziennik). */
+  function describeTerms(terms) {
+    var t = [], n = (terms.provinces || []).length;
+    if (n) t.push('oddanie ' + n + ' ' + plural(n, 'prowincji', 'prowincji', 'prowincji') + ': ' + terms.provinces.map(function (id) { return S.provStatic(id).name; }).join(', '));
+    if (terms.vassal) t.push('zostaniesz wasalem (trybut, udział w wojnach suzerena, brak własnej polityki)');
+    if (terms.reparations) t.push('reparacje ' + Math.round(REPARATIONS_PCT * 100) + '% dochodu przez ' + REPARATIONS_TURNS + ' tur');
+    if (terms.contribution) t.push('kontrybucja: połowa skarbca');
+    if (terms.disarm) t.push('rozbrojenie: armia −' + Math.round(DISARM_SHARE * 100) + '%');
+    return t.join('; ');
+  }
+  /** Prowincje z traktatu, które zwycięzca nadal okupuje (stan mógł się zmienić od złożenia propozycji). */
+  function stillValid(winner, loser, terms) {
+    var t = Object.assign({}, terms);
+    t.provinces = (terms.provinces || []).filter(function (id) { var p = G().provinces[id]; return p && p.owner === loser && heldBy(winner, id); });
+    if (t.vassal && t.provinces.length >= S.provincesOf(loser).length) t.provinces.pop();
+    return t;
+  }
+
+  /**
+   * Warunki układane przez AI: przy upadku wroga (utracona stolica, >50% ziem) wasalizacja z szansą `vassalChance`,
+   * potem okupowane prowincje od najcenniejszych, za resztę punktów reparacje i kontrybucja. null = brak sensownych żądań.
+   */
+  function buildTerms(me, target, vassalChance) {
+    var pts = warPoints(me, target), budget = acceptLimit(me, target);
+    if (pts.total <= 0) return null;
+    var terms = { provinces: [] }, keep = S.provincesOf(target).length;
+    var collapse = D().capitalLost(target) && D().occupiedShare(target) > 0.5;
+    if (collapse && keep > 1 && !checkTreaty(me, target, { vassal: true }) && U.chance(vassalChance)) {
+      var vc = vassalCost(target, []);
+      if (vc <= budget) { terms.vassal = true; budget -= vc; }
+    }
+    pts.provinces.forEach(function (p) {
+      if (keep - terms.provinces.length <= 1) return;
+      // przy wasalizacji zabrana prowincja obniża koszt wasala (mniej ziem mu zostaje)
+      var cost = p.value + (terms.vassal ? vassalCost(target, terms.provinces.concat([p.id])) - vassalCost(target, terms.provinces) : 0);
+      if (cost <= budget) { terms.provinces.push(p.id); budget -= cost; }
+    });
+    if (budget >= COST.reparations) { terms.reparations = true; budget -= COST.reparations; }
+    if (budget >= COST.contribution) terms.contribution = true;
+    return terms.provinces.length || terms.vassal ? terms : null;
+  }
+
+  /** Wasal zrywa zależność: wojna z suzerenem (pozostali wasale suzerena go bronią). */
+  function declareIndependence(v) {
+    var o = overlordOf(v);
+    if (!o) return { ok: false, reason: 'Nie jesteś wasalem.' };
+    var c = S.country(v);
+    c.overlord = null; c.vassalSince = null;
+    G().truces = G().truces.filter(function (t) { return !((t.a === v && t.b === o) || (t.a === o && t.b === v)); });
+    D().reindex();
+    D().startWar([v], [o], true);
+    c.stability = Math.max(0, c.stability - 5);
+    S.addLog(name(v) + ' ogłasza niepodległość i wypowiada wojnę suzerenowi: ' + name(o) + '!', v);
+    WT.events.emit('independence', { vassal: v, overlord: o });
+    return { ok: true, reason: 'Ogłoszono niepodległość — wojna z: ' + name(o) + '.' };
   }
 
   /** Wykonanie warunków (wywoływane z diplomacy.concludePeace przed zakończeniem wojny). */
@@ -293,6 +354,7 @@ WT.vassal = (function () {
       var c = S.country(v);
       if (c.overlord && !overlordOf(v)) { c.overlord = null; c.vassalSince = null; }   // suzeren upadł
       var o = overlordOf(v);
+      if (o && !isPlayer(o)) c.tribute = D().enemiesOf(o).length ? 0.25 : DEFAULT_TRIBUTE;   // AI-suzeren podnosi trybut na czas wojny
       c.tributePaid = o ? transfer(v, o, Math.max(0, c.lastIncome || 0) * (c.tribute != null ? c.tribute : DEFAULT_TRIBUTE)) : 0;
     });
     G().reparations = reparations().filter(function (r) {
@@ -315,7 +377,7 @@ WT.vassal = (function () {
     overlordOf: overlordOf, isVassalOf: isVassalOf, vassalsOf: vassalsOf, related: related,
     provValue: provValue, addDamage: addDamage, onBattle: onBattle, onBombing: onBombing, onShelling: onShelling, warPoints: warPoints,
     vassalCost: vassalCost, treatyCost: treatyCost, acceptLimit: acceptLimit, checkTreaty: checkTreaty, proposeTreaty: proposeTreaty, applyTreaty: applyTreaty,
-    reparationsOf: reparationsOf,
+    reparationsOf: reparationsOf, describeTerms: describeTerms, stillValid: stillValid, buildTerms: buildTerms, declareIndependence: declareIndependence,
     makeVassal: makeVassal, release: release, setTribute: setTribute, takeMoney: takeMoney, vassalTroops: vassalTroops, takeTroops: takeTroops,
     annexCost: annexCost, canAnnex: canAnnex, annex: annex,
     processTurn: processTurn

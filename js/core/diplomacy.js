@@ -684,6 +684,7 @@ WT.diplomacy = (function () {
     pact: function (p) { return name(p.from) + ' proponuje pakt o nieagresji.'; },
     callToArms: function (p) { return name(p.from) + ' wzywa do wojny przeciw ' + name(p.terms.enemy) + ' (sojusz obronny).'; },
     trade: function (p) { return name(p.from) + ' proponuje umowę handlową (+3% dochodu dla obu stron).'; },
+    treaty: function (p) { return name(p.from) + ' żąda traktatu pokojowego: ' + (WT.vassal ? WT.vassal.describeTerms(p.terms) : '') + '.'; },
     aidRequest: function (p) { return name(p.from) + ' przegrywa wojnę z: ' + name(p.terms.enemy) + ' i prosi o ' + U.fmtMoney(p.terms.amount) + ' wsparcia (lepsze relacje).'; }
   };
 
@@ -715,6 +716,12 @@ WT.diplomacy = (function () {
       if (!atWar(p.from, p.to)) return { ok: false, reason: 'Wojna już się zakończyła.' };
       concludePeace(p.from, p.to, p.terms.kind, p.terms.winner);
       return { ok: true, reason: 'Pokój zawarty.' };
+    }
+    if (p.type === 'treaty') {
+      if (!atWar(p.from, p.to) || !V()) return { ok: false, reason: 'Wojna już się zakończyła.' };
+      var t = V().stillValid(p.from, p.to, p.terms);
+      concludePeace(p.from, p.to, 'treaty', p.from, t);
+      return { ok: true, reason: 'Pokój zawarty na warunkach: ' + name(p.from) + (t.vassal ? ' — jesteś teraz wasalem.' : '.') };
     }
     if (p.type === 'alliance') return formAlliance(p.from, p.to) ? { ok: true, reason: 'Sojusz zawarty.' } : { ok: false, reason: 'Nie można zawrzeć sojuszu.' };
     if (p.type === 'pact') { makePact(p.from, p.to); return { ok: true, reason: 'Pakt podpisany.' }; }

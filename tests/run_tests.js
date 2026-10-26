@@ -882,6 +882,34 @@ test('wasale AI: suzeren zwycięża i wasalizuje upadłego wroga', function () {
   assertConsistent();
 });
 
+test('AI wasalizuje gracza (propozycja) i gracz ogłasza niepodległość', function () {
+  freshGame({ player: 'BBB' });
+  var V = WT.vassal, D = WT.diplomacy;
+  D.startWar(['AAA'], ['BBB'], true);
+  var bbb = WT.state.provincesOf('BBB');
+  bbb.forEach(function (id, i) { if (i < bbb.length - 1 || id === G().countries.BBB.capital) WT.state.setCtrl(id, 'AAA'); });
+  G().wars[0].start = G().turn - 20;
+  G().countries.AAA.ai.lastProposal = -99;
+  var real = Math.random; Math.random = function () { return 0.01; };   // szansa na wasalizację
+  try { for (var i = 0; i < 5 && !G().proposals.some(function (p) { return p.type === 'treaty'; }); i++) WT.ai.runAll(); }
+  finally { Math.random = real; }
+  var pr = G().proposals.filter(function (p) { return p.type === 'treaty' && p.to === 'BBB'; })[0];
+  assert(pr, 'AI żąda traktatu od gracza');
+  assert(pr.terms.vassal, 'żądanie wasalizacji gracza: ' + pr.text);
+  var res = D.answerProposal(pr.id, true);
+  assert(res.ok, 'przyjęcie: ' + res.reason);
+  eq(V.overlordOf('BBB'), 'AAA', 'gracz jest wasalem');
+  assert(!D.atWar('AAA', 'BBB'), 'pokój');
+  assert(D.declareWar('BBB', 'CCC').ok === false, 'gracz-wasal nie wypowiada wojen');
+  G().countries.BBB.lastIncome = 10;
+  var t = G().countries.BBB.treasury;
+  V.processTurn();
+  assert(G().countries.BBB.treasury < t, 'gracz płaci trybut');
+  var ind = V.declareIndependence('BBB');
+  assert(ind.ok && !V.overlordOf('BBB') && D.atWar('BBB', 'AAA'), 'niepodległość = wojna z suzerenem');
+  assertConsistent();
+});
+
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {
   freshGame({ player: 'AAA', god: true });
   var c = G().countries.AAA, t0 = c.treasury;

@@ -1232,7 +1232,7 @@
     h += '<button class="btn" data-dip="improve" title="Koszt ok. ' + fmtNum(impCost, 1) + ' mld $">Popraw relacje</button>';
     h += '<button class="btn" data-dip="insult">Obraź</button>';
     h += '<button class="btn btn-ghost" data-dip="show">Pokaż na mapie</button>';
-    return h + '</div>' + countryWarsHtml(cc) + reparationsHtml(cc) + vassalSectionHtml(cc) + aidSectionHtml(cc) + '</div>';
+    return h + '</div>' + countryWarsHtml(cc) + reparationsHtml(cc) + vassalSectionHtml(cc) + overlordSectionHtml(cc) + aidSectionHtml(cc) + '</div>';
   }
 
   // ===========================================================================
@@ -1274,7 +1274,21 @@
       '<div class="hint">' + (an.ok ? '' : esc(an.reason) + ' ') + 'Wasal płaci trybut co turę, walczy w twoich wojnach (dołącza automatycznie) i nie prowadzi własnej polityki. Zabieranie pieniędzy i wojska obniża jego relacje z tobą.</div>';
     return h;
   }
+  /** Gracz jest wasalem `cc`: trybut i ogłoszenie niepodległości. */
+  function overlordSectionHtml(cc) {
+    if (!WT.vassal || overlordOf(me()) !== cc) return '';
+    const c = liveCountry(me()), trib = Math.round((c.tribute != null ? c.tribute : WT.vassal.DEFAULT_TRIBUTE) * 100);
+    return '<div class="section-title" style="margin-top:12px">' + icon('crown') + ' Jesteś wasalem</div>' +
+      '<div class="kv"><span class="k">Od tury</span><span class="v">' + (c.vassalSince != null ? c.vassalSince : '?') + '</span>' +
+      '<span class="k">Trybut</span><span class="v">' + trib + '% dochodu (ostatnio ' + fmtNum(c.tributePaid || 0, 2) + ' mld $)</span></div>' +
+      '<div class="row-actions"><button class="btn btn-sm btn-danger" id="vas-indep">Ogłoś niepodległość</button></div>' +
+      '<div class="hint">Jako wasal nie wypowiadasz wojen ani nie zawierasz sojuszy i paktów, a w wojnach suzerena walczysz po jego stronie. Niepodległość = wojna z suzerenem (jego wasale go bronią).</div>';
+  }
   function bindVassalSection(cc) {
+    const ind = $('vas-indep');
+    if (ind) ind.addEventListener('click', () => confirmModal('Niepodległość', 'Ogłosić niepodległość i wypowiedzieć wojnę suzerenowi: <b>' + esc(countryName(cc)) + '</b>?', 'Ogłoś niepodległość', () => {
+      resultToast(WT.vassal.declareIndependence(me())); R().invalidate(); refreshAll();
+    }, true));
     const V = WT.vassal, tr = $('vas-trib'); if (!V || !tr) return;
     const p = me(), after = () => { R().invalidate(); refreshAll(); };
     tr.addEventListener('input', () => { $('vas-trib-val').textContent = tr.value + '% dochodu'; });
@@ -1738,7 +1752,7 @@
   // Propozycje AI → gracz
   // ===========================================================================
   const PROPOSAL_TITLES = { peace: 'Propozycja pokoju', alliance: 'Propozycja sojuszu', pact: 'Propozycja paktu o nieagresji',
-    trade: 'Propozycja umowy handlowej', aidRequest: 'Prośba o pomoc', callToArms: 'Wezwanie do wojny' };
+    trade: 'Propozycja umowy handlowej', aidRequest: 'Prośba o pomoc', callToArms: 'Wezwanie do wojny', treaty: 'Żądania pokojowe' };
   function proposalText(pr) {
     const from = '<b>' + esc(countryName(pr.from)) + '</b>';
     let t;
@@ -1757,6 +1771,7 @@
         if (terms.war || terms.vs || terms.against) t += '<br><span class="dim">Dotyczy: ' + esc(countryName(terms.war || terms.vs || terms.against)) + '</span>';
       }
     }
+    if (pr.type === 'treaty') t += '<br><span class="reason">' + (pr.terms.vassal ? 'Przyjęcie: zostaniesz wasalem — płacisz trybut, walczysz w wojnach suzerena, nie wypowiadasz wojen. Później możesz ogłosić niepodległość (wojna). ' : '') + 'Odrzucenie: wojna trwa dalej.</span>';
     if (pr.type === 'aidRequest' && !isGod()) {
       const tr = (liveCountry(me()) || {}).treasury || 0;
       t += '<br><span class="dim">Twój skarbiec: ' + fmtNum(tr, 1) + ' mld $' + (tr < pr.terms.amount ? ' — za mało, nie możesz pomóc' : '') + '</span>';
