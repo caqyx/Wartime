@@ -46,9 +46,165 @@ WT.state = (function () {
     if (opts.startWars) applyStartConflicts(g);
     placeStartingArmies(g);
     placeStartingFleets(g);
-    if (!g.countries[g.player]) g.player = countriesAlive()[0];
+    // państwo nieistniejące w tej epoce: gra zaczyna się powstaniem na jego ziemiach rdzennych
+    if (opts.player && !(g.countries[opts.player] && g.countries[opts.player].alive)) startUprising(g, opts.player);
+    if (!g.countries[g.player] || !g.countries[g.player].alive) g.player = countriesAlive()[0];
     addLog('Rozpoczęto grę jako ' + g.countries[g.player].name + '. ' + dateStr() + '.', g.player);
     return g;
+  }
+
+  // ---------- Państwa nieistniejące: ziemie rdzenne, odtworzenie (wasal), powstanie gracza ----------
+
+  /** Dane państwa: ze scenariusza, gdy w nim występuje, inaczej z danych 2026. */
+  function nationData(cc) {
+    var sc = scenarioData(G().scenario);
+    return (sc && sc.countries[cc]) || U.countryData()[cc] || null;
+  }
+  function nationName(cc) {
+    var c = G().countries[cc], d = nationData(cc);
+    return (c && c.name) || (d && d.name) || cc;
+  }
+  /** Ziemie rdzenne: granice państwa w scenariuszu (jeśli tam istnieje), inaczej granice z 2026; bez lądu poza grą. */
+  function coresOf(cc) {
+    var sc = scenarioData(G().scenario), useSc = sc && sc.countries[cc], out = [];
+    M().provinces.forEach(function (p, i) {
+      var o = useSc ? sc.owners[i] : p.cc;
+      if (o === cc && G().provinces[i] && G().provinces[i].owner !== VOID) out.push(i);
+    });
+    return out;
+  }
+  /** Państwa, których teraz nie ma (upadłe albo nieistniejące w epoce), a mają ziemie rdzenne na mapie. */
+  function nationCandidates() {
+    var g = G(), seen = {}, out = [];
+    var sc = scenarioData(g.scenario);
+    Object.keys(g.countries).concat(Object.keys(U.countryData()), sc ? Object.keys(sc.countries) : []).forEach(function (cc) {
+      if (seen[cc] || cc === VOID) return;
+      seen[cc] = 1;
+      var c = g.countries[cc];
+      if (c && (c.alive || c.void)) return;
+      if (!c && sameNationExists(cc)) return;
+      if (coresOf(cc).length) out.push(cc);
+    });
+    return out;
+  }
+  /** Państwo z 2026 istnieje w scenariuszu pod innym kodem (np. Niemcy = Cesarstwo Niemieckie): jego stolica to stolica tamtego. */
+  function sameNationExists(cc) {
+    var d = U.countryData()[cc], g = G();
+    if (d && Object.keys(g.countries).some(function (k) { return g.countries[k].alive && g.countries[k].name === d.name; })) return true;
+    if (!d || !d.capitalLonLat) return false;
+    var xy = U.project(d.capitalLonLat[0], d.capitalLonLat[1]), id = U.provinceAt(xy[0], xy[1]);
+    if (id < 0) return false;
+    var o = G().countries[G().provinces[id].owner];
+    return !!(o && o.alive && o.capital === id);
+  }
+  /**
+   * Tworzy (odtwarza) państwo `cc` na prowincjach `provs`. opts: { treasury, army, tech }.
+   * Relacje liczone od nowa (stare relacje upadłego państwa są usuwane).
+   */
+  function spawnCountry(cc, provs, opts) {
+    opts = opts || {};
+    var g = G(), old = g.countries[cc], d = nationData(cc);
+    var pop = provs.reduce(function (s, id) { return s + provPop(id); }, 0);
+    var c = makeCountry(cc, d, pop);
+    if (old) { c.name = old.name; c.color = old.color; }
+    if (opts.tech != null) c.tech = Math.max(c.tech, opts.tech);
+    Object.keys(g.rel).forEach(function (k) { var x = k.split('|'); if (x[0] === cc || x[1] === cc) delete g.rel[k]; });
+    g.countries[cc] = c;
+    if (WT.tech) WT.tech.ensureAll();
+    provs.forEach(function (id) { setOwner(id, cc); });
+    c.startGdp = provs.reduce(function (s, id) { return s + (g.provinces[id].gdp || 0); }, 0);
+    c.treasury = U.round(opts.treasury != null ? opts.treasury : c.startGdp * 0.03, 2);
+    c.capital = findCapital(c);
+    if (c.capital < 0) c.capital = provs[0];
+    createInitialRelations(g, [cc]);
+    if (opts.army >= 1000) createArmy(cc, c.capital, opts.army);
+    if (WT.diplomacy) WT.diplomacy.reindex();
+    return c;
+  }
+  /** Prowincja startowa powstania: rdzenna z historyczną stolicą, inaczej najludniejsza. */
+  function uprisingStart(cc, cores) {
+    var d = nationData(cc), inCores = function (i) { return cores.indexOf(i) >= 0; };
+    if (d && d.capitalLonLat) {
+      var xy = U.project(d.capitalLonLat[0], d.capitalLonLat[1]);
+      var id = U.provinceAt(xy[0], xy[1], inCores);
+      if (id < 0) id = U.nearestProvince(xy[0], xy[1], inCores);
+      if (id >= 0) return id;
+    }
+    return cores.reduce(function (b, i) { return provPop(i) > provPop(b) ? i : b; }, cores[0]);
+  }
+  /** Podgląd powstania dla ekranu startowego: ziemie rdzenne, prowincja startowa, okupanci (cc → liczba prowincji), armia. */
+  function uprisingPreview(cc) {
+    var cores = coresOf(cc);
+    if (!cores.length) return null;
+    var start = uprisingStart(cc, cores), occ = {};
+    cores.forEach(function (i) { var o = G().provinces[i].owner; occ[o] = (occ[o] || 0) + 1; });
+    return { cores: cores, start: start, occupier: G().provinces[start].owner, occupiers: occ,
+      army: Math.round(U.clamp(provPop(start) * 12000, 25000, 80000)) };
+  }
+  /**
+   * Powstanie: gracz zaczyna w jednej prowincji rdzennej (stolica historyczna) z armią ochotników,
+   * w wojnie z okupantem tej prowincji. Cel: odzyskać wszystkie ziemie rdzenne (g.goal).
+   */
+  function startUprising(g, cc) {
+    var cores = coresOf(cc);
+    if (!cores.length) return false;
+    var start = uprisingStart(cc, cores), occupier = g.provinces[start].owner;
+    var army = uprisingPreview(cc).army;
+    var occ = g.countries[occupier];
+    var c = spawnCountry(cc, [start], { army: army, tech: occ ? occ.tech * 0.95 : null });
+    c.treasury = U.round(Math.max(c.treasury, (occ ? occ.startGdp : 100) * 0.01), 2);   // fundusz powstańczy (diaspora, sponsorzy)
+    c.manpower = Math.max(c.manpower, Math.round(cores.reduce(function (s, i) { return s + provPop(i); }, 0) * 8));
+    c.stability = 80;
+    // garnizon okupanta wycofuje się z prowincji powstania
+    (idx.armiesAt[start] || []).slice().forEach(function (id) {
+      var a = g.armies[id];
+      if (!a || a.owner === cc) return;
+      var home = WT.military ? WT.military.nearestOwnProvince(a.owner, start) : -1;
+      if (home < 0) removeArmy(id); else moveArmy(a, home);
+    });
+    // dezercja: część żołnierzy okupanta stacjonujących na ziemiach rdzennych przechodzi do powstańców
+    var defect = 0, cap = army * 2;
+    cores.forEach(function (i) {
+      (idx.armiesAt[i] || []).slice().forEach(function (id) {
+        var a = g.armies[id];
+        if (!a || a.owner !== occupier || defect >= cap) return;
+        var n = Math.min(Math.round(a.size * 0.25), cap - defect);
+        a.size -= n; defect += n;
+        if (a.size < 1000) removeArmy(id);
+      });
+    });
+    if (defect >= 1000) createArmy(cc, start, defect);
+    if (occ && occ.alive && WT.diplomacy) {
+      WT.diplomacy.startWar([cc], [occupier], true);
+      WT.diplomacy.setRel(cc, occupier, -90);
+      // rywale okupanta sympatyzują z powstaniem (pomoc finansowa AI dla przegrywających przyjaciół)
+      (occ.rivals || []).forEach(function (r) { if (g.countries[r] && g.countries[r].alive && r !== cc) WT.diplomacy.setRel(cc, r, 55); });
+    }
+    if (WT.military) WT.military.merge(start, cc);
+    g.goal = { type: 'independence', cc: cc, cores: cores, done: false, start: start };
+    addLog(c.name + ' powstaje! Powstańcy opanowali ' + M().provinces[start].name + (defect >= 1000 ? ' (zdezerterowało ' + Math.round(defect / 1000) + ' tys. żołnierzy okupanta)' : '') + '. Cel: odzyskać ' + cores.length + ' ' +
+      (cores.length === 1 ? 'prowincję' : 'prowincji') + ' ziem rdzennych.', cc);
+    return true;
+  }
+  /** Postęp celu gracza: niepodległość (ziemie rdzenne), potem podbój świata (udział prowincji gracza i jego wasali). */
+  function goalProgress() {
+    var g = G(), gl = g.goal, mine = function (i) { var o = g.provinces[i].owner; return o === g.player || (WT.vassal && WT.vassal.overlordOf(o) === g.player); };
+    var res = { goal: gl || null };
+    if (gl) res.cores = { have: gl.cores.filter(function (i) { return g.provinces[i].owner === gl.cc; }).length, total: gl.cores.length };
+    var total = 0, have = 0;
+    g.provinces.forEach(function (p, i) { if (p.owner === VOID) return; total++; if (mine(i)) have++; });
+    res.world = { have: have, total: total };
+    return res;
+  }
+  /** Sprawdzenie celu (koniec tury): komplet ziem rdzennych = niepodległość odzyskana. */
+  function checkGoal() {
+    var g = G(), gl = g.goal;
+    if (!gl || gl.done || gl.cc !== g.player || !g.countries[gl.cc] || !g.countries[gl.cc].alive) return;
+    var pr = goalProgress();
+    if (pr.cores.have < pr.cores.total) return;
+    gl.done = true; gl.doneTurn = g.turn;
+    addLog(g.countries[gl.cc].name + ' odzyskuje niepodległość: wszystkie ziemie rdzenne wolne! Teraz — podbój świata.', gl.cc);
+    if (WT.events) WT.events.emit('goal', { type: 'independence', cc: gl.cc });
   }
 
   function createEmptyState(opts, seed) {
@@ -612,6 +768,8 @@ WT.state = (function () {
     embarkArmy: embarkArmy, disembarkArmy: disembarkArmy,
     createFleet: createFleet, removeFleet: removeFleet, moveFleet: moveFleet,
     findCapital: findCapital, addLog: addLog, extendWorld: extendWorld,
+    nationData: nationData, nationName: nationName, coresOf: coresOf, nationCandidates: nationCandidates, spawnCountry: spawnCountry,
+    startUprising: startUprising, uprisingPreview: uprisingPreview, goalProgress: goalProgress, checkGoal: checkGoal,
     VOID: VOID, SEA_BASE: SEA_BASE, CONTINENTS: CONTINENTS, scenarioData: scenarioData, provPop: provPop, era: era,
     isSea: isSea, seaZone: seaZone, seaZoneCount: seaZoneCount, nodePoint: nodePoint, nodeName: nodeName, nodeDist: nodeDist, involvesPlayer: involvesPlayer, settings: settings
   };

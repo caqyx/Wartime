@@ -762,6 +762,7 @@ WT.diplomacy = (function () {
     G().proposals = G().proposals.filter(function (p) { return t - p.turn < PROPOSAL_TTL; });
     G().wars.forEach(warScore);
     if (V()) V().processTurn();
+    S.checkGoal();
     pruneTrades();
     refreshCountries();
   }

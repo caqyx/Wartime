@@ -190,6 +190,38 @@ WT.vassal = (function () {
     return terms.provinces.length || terms.vassal ? terms : null;
   }
 
+  /** Sprawdzenie odtworzenia państwa `cc` przez `o` na prowincjach `provs` (błąd albo null). */
+  function checkRelease(o, cc, provs) {
+    if (!alive(o)) return 'Państwo nie istnieje.';
+    if (overlordOf(o)) return 'Jako wasal nie możesz tworzyć państw.';
+    if (S.nationCandidates().indexOf(cc) < 0) return name(cc) + ' już istnieje lub nie ma ziem na mapie.';
+    if (!provs || !provs.length) return 'Zaznacz prowincje dla nowego państwa.';
+    for (var i = 0; i < provs.length; i++) {
+      var p = G().provinces[provs[i]];
+      if (!p || p.owner !== o || p.ctrl !== o) return 'Oddać można tylko własne, kontrolowane prowincje.';
+    }
+    if (S.provincesOf(o).length - provs.length < 1) return 'Musisz zachować co najmniej jedną prowincję.';
+    return null;
+  }
+  /**
+   * Odtworzenie upadłego / nieistniejącego państwa jako wasala: dostaje wskazane prowincje, milicję
+   * (ok. 3 tys. na mln ludności) i technologię suzerena; od razu dołącza do jego wojen.
+   */
+  function releaseNation(o, cc, provs) {
+    var err = checkRelease(o, cc, provs);
+    if (err) return { ok: false, reason: err };
+    var pop = provs.reduce(function (s, id) { return s + S.provPop(id); }, 0);
+    var army = Math.round(U.clamp(pop * 3000, 3000, 50000));
+    var c = S.spawnCountry(cc, provs, { army: army, tech: S.country(o).tech });
+    makeVassal(cc, o, true);
+    D().setRel(cc, o, 70);
+    D().warsOf(o).forEach(function (w) { if (!D().sideOf(w, cc)) D().joinWar(w, cc, D().sideOf(w, o)); });
+    D().refreshCountries();
+    S.addLog(name(o) + ' odtwarza państwo ' + c.name + ' (' + provs.length + ' ' + plural(provs.length, 'prowincja', 'prowincje', 'prowincji') + ') jako swojego wasala.', o);
+    WT.events.emit('released', { cc: cc, overlord: o, provinces: provs.slice() });
+    return { ok: true, reason: c.name + ' powstaje jako twój wasal (' + provs.length + ' ' + plural(provs.length, 'prowincja', 'prowincje', 'prowincji') + ', ' + fmtInt(army) + ' żołnierzy).' };
+  }
+
   /** Wasal zrywa zależność: wojna z suzerenem (pozostali wasale suzerena go bronią). */
   function declareIndependence(v) {
     var o = overlordOf(v);
@@ -377,7 +409,7 @@ WT.vassal = (function () {
     overlordOf: overlordOf, isVassalOf: isVassalOf, vassalsOf: vassalsOf, related: related,
     provValue: provValue, addDamage: addDamage, onBattle: onBattle, onBombing: onBombing, onShelling: onShelling, warPoints: warPoints,
     vassalCost: vassalCost, treatyCost: treatyCost, acceptLimit: acceptLimit, checkTreaty: checkTreaty, proposeTreaty: proposeTreaty, applyTreaty: applyTreaty,
-    reparationsOf: reparationsOf, describeTerms: describeTerms, stillValid: stillValid, buildTerms: buildTerms, declareIndependence: declareIndependence,
+    reparationsOf: reparationsOf, describeTerms: describeTerms, checkRelease: checkRelease, releaseNation: releaseNation, stillValid: stillValid, buildTerms: buildTerms, declareIndependence: declareIndependence,
     makeVassal: makeVassal, release: release, setTribute: setTribute, takeMoney: takeMoney, vassalTroops: vassalTroops, takeTroops: takeTroops,
     annexCost: annexCost, canAnnex: canAnnex, annex: annex,
     processTurn: processTurn

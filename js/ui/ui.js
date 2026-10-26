@@ -368,14 +368,22 @@
     const cd = window.COUNTRY_DATA || {};
     return sortByName(aliveCountries().filter((cc) => cc && (cd[cc] || true)));
   }
+  // Państwa nieistniejące w wybranej epoce — gra od powstania (state.uprisingPreview)
+  function rebelCountries() { return G() && has('state.nationCandidates') ? sortByName(call('state.nationCandidates', [], []) || []) : []; }
+  function nationName(cc) { return has('state.nationName') && G() ? call('state.nationName', [cc], cc) : countryName(cc); }
+  function isRebel(cc) { return !!cc && !!G() && !(G().countries[cc] && G().countries[cc].alive); }
   function renderStartList() {
     const q = $('start-search').value.trim().toLowerCase();
-    const list = startCountries().filter((cc) => !q || countryName(cc).toLowerCase().includes(q) || cc.toLowerCase().includes(q));
-    $('start-results').innerHTML = list.map((cc) => {
+    const match = (cc, nm) => !q || nm.toLowerCase().includes(q) || cc.toLowerCase().includes(q);
+    const list = startCountries().filter((cc) => match(cc, countryName(cc)));
+    const rebels = rebelCountries().filter((cc) => match(cc, nationName(cc)));
+    $('start-results').innerHTML = (list.map((cc) => {
       const d = startStats(cc);
       return '<div class="country-item' + (cc === S.startCC ? ' sel' : '') + '" data-cc="' + esc(cc) + '">' + swatch(cc) +
         '<span class="name">' + esc(countryName(cc)) + '</span><span class="faint mono">' + (d.gdp ? fmtInt(d.gdp) + ' mld $' : '') + '</span></div>';
-    }).join('') || '<div class="country-item faint">Brak wyników</div>';
+    }).join('') + (rebels.length ? '<div class="list-head">Nie istnieją — zacznij od powstania (' + rebels.length + ')</div>' + rebels.map((cc) =>
+      '<div class="country-item rebel' + (cc === S.startCC ? ' sel' : '') + '" data-cc="' + esc(cc) + '">' + swatch(cc) + '<span class="name">' + esc(nationName(cc)) + '</span><span class="tag rebel">powstanie</span></div>').join('') : '')) ||
+      '<div class="country-item faint">Brak wyników</div>';
   }
   // Dane państwa na ekranie startowym — z podglądu gry (epoka i kontynenty), inaczej statyczne z 2026
   function startStats(cc) {
@@ -384,9 +392,21 @@
     const army = Object.values(G().armies || {}).reduce((s, a) => s + (a.owner === cc ? a.size || 0 : 0), 0);
     return { gdp: c.startGdp, pop: c.pop, army: army / 1000, navy: c.navy, ideology: c.ideology, gov: c.gov };
   }
+  function renderRebelCard(cc, card) {
+    const u = call('state.uprisingPreview', [cc], null);
+    if (!u) { card.className = 'country-card empty'; card.textContent = 'Brak ziem tego państwa na mapie.'; return; }
+    const tile = (ic, k, v) => '<div class="stat-tile"><div class="k">' + icon(ic) + k + '</div><div class="v" title="' + esc(v) + '">' + v + '</div></div>';
+    const occ = Object.keys(u.occupiers).filter((o) => o !== 'XXX').sort((a, b) => u.occupiers[b] - u.occupiers[a]);
+    card.className = 'country-card';
+    card.innerHTML = '<h3>' + swatch(cc) + esc(nationName(cc)) + '<span class="tag rebel">nie istnieje</span></h3><div class="stat-grid">' +
+      tile('pin', 'Ziemie rdzenne', u.cores.length + ' prow.') + tile('flag', 'Start', esc(provStatic(u.start).name)) + tile('swords', 'Powstańcy', fmtInt(u.army / 1000) + ' tys.') + '</div>' +
+      '<div class="hint">Wojna z: <b>' + esc(countryName(u.occupier)) + '</b>. Ziemie rdzenne zajmują: ' + occ.map((o) => esc(countryName(o)) + ' (' + u.occupiers[o] + ')').join(', ') +
+      '. Cel: odzyskać wszystkie ziemie rdzenne (podświetlone), potem — podbój świata.</div>';
+  }
   function renderStartCard() {
     const cc = S.startCC, card = $('start-card');
     if (!cc) { card.className = 'country-card empty'; card.textContent = 'Kliknij państwo na mapie lub wybierz z listy.'; return; }
+    if (isRebel(cc)) { renderRebelCard(cc, card); return; }
     const d = startStats(cc);
     card.className = 'country-card';
     const tile = (ic, k, v) => '<div class="stat-tile"><div class="k">' + icon(ic) + k + '</div><div class="v" title="' + esc(v) + '">' + v + '</div></div>';
@@ -401,7 +421,10 @@
   }
   function selectStartCountry(cc, center) {
     S.startCC = cc || null;
-    R().view.highlightCC = S.startCC;
+    const rebel = isRebel(S.startCC), u = rebel ? call('state.uprisingPreview', [S.startCC], null) : null;
+    R().view.highlightCC = rebel ? null : S.startCC;
+    R().view.multi = u ? u.cores.slice() : null;   // ziemie rdzenne powstania
+    if (center && u) { centerOnProvinces(u.cores); center = false; }
     $('btn-start').disabled = !S.startCC;
     renderStartList(); renderStartCard();
     const el = $('start-results').querySelector('.sel');
@@ -410,6 +433,14 @@
     R().requestDraw();
   }
   // [lewy, dolny] fragment ekranu zasłonięty przez panel startowy (na telefonie w pionie panel jest na dole).
+  function centerOnProvinces(ids) {
+    const b = [1e9, 1e9, -1e9, -1e9];
+    ids.forEach((i) => { const q = provStatic(i).bbox; b[0] = Math.min(b[0], q[0]); b[1] = Math.min(b[1], q[1]); b[2] = Math.max(b[2], q[2]); b[3] = Math.max(b[3], q[3]); });
+    const o = S.inGame ? [0, 0] : startPanelOffsets(), cam = R().camera();
+    const vw = Math.max(200, window.innerWidth - o[0]), vh = Math.max(200, window.innerHeight - o[1]);
+    const z = Math.max(0.3, Math.min(2.4, Math.min(vw / ((b[2] - b[0]) * 1.8 + 200), vh / ((b[3] - b[1]) * 1.8 + 160))));
+    R().centerOn((b[0] + b[2]) / 2 - o[0] / 2 / z, (b[1] + b[3]) / 2 + o[1] / 2 / z, z || cam.zoom);
+  }
   function startPanelOffsets() {
     const el = document.querySelector('.start-panel');
     if (!el || !el.offsetWidth) return [0, 0];
@@ -474,7 +505,7 @@
     applySetup();
   }
   function showStart() {
-    S.inGame = false; S.airSel = null; S.shellSel = null; S.selSea = -1; R().view.shellRange = null; R().view.selSea = -1; R().view.airRange = null; R().view.radarRing = null; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.godTool = null;
+    S.inGame = false; S.goalShow = false; if ($('goal-chip')) $('goal-chip').classList.add('hidden'); S.airSel = null; S.shellSel = null; S.selSea = -1; R().view.shellRange = null; R().view.selSea = -1; R().view.airRange = null; R().view.radarRing = null; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.godTool = null;
     document.body.classList.remove('in-game', 'ob-open');
     ['topbar', 'mapmodes', 'log', 'province-panel', 'diplo-panel', 'god-panel', 'order-bar', 'menu', 'legend'].forEach((id) => $(id).classList.add('hidden'));
     $('start-screen').classList.remove('hidden');
@@ -554,7 +585,34 @@
   // ===========================================================================
   // Górny pasek i menu
   // ===========================================================================
+  // Cel gry (powstanie): niepodległość = komplet ziem rdzennych, potem podbój świata
+  function renderGoal() {
+    let el = $('goal-chip');
+    const g = G(), pr = g && g.goal && has('state.goalProgress') ? call('state.goalProgress', [], null) : null;
+    if (!pr || !S.inGame) { if (el) el.classList.add('hidden'); return; }
+    if (!el) {
+      el = document.createElement('button'); el.id = 'goal-chip'; el.className = 'goal-chip'; el.type = 'button';
+      document.querySelector('#app, body').appendChild(el);
+      el.addEventListener('click', () => {
+        const gl = G().goal; if (!gl) return;
+        S.goalShow = !S.goalShow;
+        R().view.multi = S.goalShow ? gl.cores.slice() : (S.multi ? S.multi.slice() : null);
+        if (S.goalShow) centerOnProvinces(gl.cores);
+        R().requestDraw();
+      });
+    }
+    const done = pr.goal.done, pct = Math.round(100 * pr.world.have / Math.max(1, pr.world.total));
+    el.innerHTML = icon(done ? 'trophy' : 'flag') + (done ? 'Podbój świata: <b>' + pct + '%</b> <span class="dim">(' + pr.world.have + '/' + pr.world.total + ')</span>'
+      : 'Niepodległość: <b>' + pr.cores.have + '/' + pr.cores.total + '</b> <span class="dim">ziem rdzennych</span>');
+    el.title = done ? 'Prowincje twoje i wasali na całej mapie' : 'Kliknij, aby podświetlić ziemie rdzenne';
+    el.classList.remove('hidden');
+    if (done && !g.goal.shown) {
+      g.goal.shown = true;
+      openModal({ title: icon('trophy') + ' Niepodległość odzyskana!', body: '<p><b>' + esc(countryName(me())) + '</b> odzyskuje wszystkie ziemie rdzenne. Nowy cel: podbój świata — licznik pokazuje udział prowincji twoich i twoich wasali.</p>', buttons: [{ label: 'Dalej', cls: 'btn-primary' }] });
+    }
+  }
   function renderTopbar() {
+    renderGoal();
     const cc = me(), c = liveCountry(cc) || {};
     $('tb-swatch').style.background = countryColor(cc);
     $('tb-name').textContent = countryName(cc);
@@ -1176,6 +1234,7 @@
     const focused = document.activeElement && document.activeElement.id === 'dip-search';
     let html = '<div class="panel-head"><h2>Dyplomacja</h2><button class="close" data-act="close" title="Zamknij (Esc)" aria-label="Zamknij">' + icon('x') + '</button></div><div class="panel-body">';
     html += '<div class="section dip-settings"><label class="check"><input type="checkbox" id="dip-nopacts"' + (settingsOf().autoRejectPacts ? ' checked' : '') + '> <span>Automatycznie odrzucaj pakty o nieagresji</span></label></div>';
+    if (WT.vassal && !overlordOf(me())) html += '<div class="section"><button class="btn" id="dip-release" style="width:100%;justify-content:center">' + icon('crown') + ' Utwórz państwo-wasala (odtwórz upadłe)</button></div>';
     html += '<div class="section"><input type="search" id="dip-search" placeholder="Szukaj państwa…" value="' + esc(S.diploQuery) + '" style="width:100%"></div>';
     html += '<div class="section"><div class="country-list" id="dip-list" style="max-height:200px">' + diploListHtml() + '</div></div>';
     if (S.diploCC && liveCountry(S.diploCC)) html += diploDetailHtml(S.diploCC);
@@ -1393,6 +1452,7 @@
     panel.querySelectorAll('[data-dip]').forEach((b) => b.addEventListener('click', () => diploAction(b.dataset.dip, S.diploCC)));
     bindAidSection(S.diploCC);
     bindVassalSection(S.diploCC);
+    const rb = $('dip-release'); if (rb) rb.addEventListener('click', () => { closeDiplomacy(); startRelease(); });
     $('dip-nopacts').addEventListener('change', (e) => { settingsOf().autoRejectPacts = e.target.checked; toast(e.target.checked ? 'Pakty o nieagresji będą odrzucane automatycznie' : 'Propozycje paktów znów trafią do ciebie', '', 2200); });
   }
   function diploAction(act, cc) {
@@ -2176,6 +2236,7 @@
     html += '<div class="section"><div class="hint">' + (isTouch() ? 'Stuknij' : 'Kliknij') + ' prowincję, aby ją dodać lub usunąć' + (isTouch() ? '.' : ' (Shift+klik działa też poza tym trybem).') + '</div>' +
       '<div class="row-actions multi-presets"><button class="btn btn-sm" data-mact="all">Wszystkie moje</button><button class="btn btn-sm" data-mact="coast">Nadmorskie</button>' +
       '<button class="btn btn-sm" data-mact="border">Przygraniczne</button><button class="btn btn-sm" data-mact="clear"' + (n ? '' : ' disabled') + '>Wyczyść</button></div></div>';
+    html += releaseSectionHtml(n);
     html += '<div class="section"><div class="section-title">Buduj na wszystkich</div>';
     Object.keys(B).forEach((type) => { html += multiBuildRow(type, B[type], n); });
     html += '</div></div>';
@@ -2184,7 +2245,43 @@
     panel.scrollTop = scroll;
     panel.querySelectorAll('[data-mact]').forEach((b) => b.addEventListener('click', () => onMultiAction(b.dataset.mact)));
     panel.querySelectorAll('[data-mbuild]').forEach((b) => b.addEventListener('click', () => doBuildMany(b.dataset.mbuild)));
+    bindReleaseSection();
   }
+  // Odtworzenie upadłego / nieistniejącego państwa jako wasala z zaznaczonych prowincji
+  function releaseCandidates() {
+    if (!WT.vassal || !has('state.nationCandidates')) return [];
+    const mine = new Set(provincesOf(me()));
+    const score = (cc) => (call('state.coresOf', [cc], []) || []).filter((i) => mine.has(i)).length;
+    return (call('state.nationCandidates', [], []) || []).map((cc) => ({ cc, n: score(cc) }))
+      .sort((a, b) => b.n - a.n || nationName(a.cc).localeCompare(nationName(b.cc), 'pl'));
+  }
+  function releaseSectionHtml(n) {
+    const list = releaseCandidates();
+    if (!list.length) return '';
+    if (!S.releaseCC || !list.some((x) => x.cc === S.releaseCC)) S.releaseCC = list[0].cc;
+    const err = WT.vassal.checkRelease(me(), S.releaseCC, S.multi);
+    return '<div class="section release"><div class="section-title">' + icon('crown') + ' Utwórz państwo-wasala</div>' +
+      '<div class="release-row"><select id="rel-cc">' + list.map((x) => '<option value="' + esc(x.cc) + '"' + (x.cc === S.releaseCC ? ' selected' : '') + '>' +
+        esc(nationName(x.cc)) + (x.n ? ' — ' + x.n + ' twoich ziem rdzennych' : '') + '</option>').join('') + '</select>' +
+      '<button class="btn btn-sm" id="rel-cores" title="Zaznacz twoje prowincje będące jego ziemiami rdzennymi">Jego ziemie</button></div>' +
+      '<div class="row-actions"><button class="btn btn-sm btn-primary" id="rel-go"' + (err ? ' disabled' : '') + '>Utwórz: ' + esc(nationName(S.releaseCC)) + ' (' + n + ')</button></div>' +
+      '<div class="hint">' + (err && n ? '<span class="neg">' + esc(err) + '</span> ' : '') + 'Zaznaczone prowincje stają się nowym państwem — twoim wasalem (trybut, wspólne wojny, pełna kontrola w Dyplomacji).</div></div>';
+  }
+  function bindReleaseSection() {
+    const sel = $('rel-cc'); if (!sel) return;
+    sel.addEventListener('change', () => { S.releaseCC = sel.value; renderMultiPanel(); });
+    $('rel-cores').addEventListener('click', () => {
+      const mine = new Set(provincesOf(me()).filter((i) => provDyn(i).ctrl === me()));
+      setMulti((call('state.coresOf', [S.releaseCC], []) || []).filter((i) => mine.has(i)));
+    });
+    $('rel-go').addEventListener('click', () => {
+      const cc = S.releaseCC, res = WT.vassal.releaseNation(me(), cc, S.multi.slice());
+      if (!resultToast(res)) return;
+      exitMulti(); R().invalidate(); refreshAll();
+      S.diploCC = cc;
+    });
+  }
+  function startRelease() { startMulti([]); }
   function multiBuildRow(type, def, n) {
     const plan = n ? call('economy.bulkPlan', [me(), S.multi, type], null) : null;
     const k = plan ? plan.eligible.length : 0;
@@ -2237,7 +2334,7 @@
     } else openNode(u.prov);
   }
   function onMapClick(prov, ev, sea) {
-    if (!S.inGame) { if (prov >= 0) selectStartCountry(R().ownerOf(prov), false); return; }
+    if (!S.inGame) { if (prov >= 0) selectStartCountry(R().ownerOf(prov) === 'XXX' ? null : R().ownerOf(prov), false); return; }
     if (S.godTool) { applyGodTool(prov); return; }
     if (S.airSel) { doRaid(prov); return; }
     if (S.shellSel) { doShell(prov); return; }

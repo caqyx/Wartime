@@ -944,3 +944,19 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .conf-item .num { color: oklch(88% 0.11 85); font-weight: 650; white-space: nowrap; }
 .conf-item.disabled { opacity: 0.5; cursor: default; }
 @media (max-width: 700px) { .conf-cols, .conf-head { grid-template-columns: 1fr; } .conf-head b { font-size: 18px; } }
+
+/* ---------- Powstanie i odtwarzanie państw ---------- */
+.list-head { position: sticky; top: 0; z-index: 1; margin-top: 6px; padding: 6px 10px; font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: oklch(82% 0.12 60); background: rgba(13, 19, 29, 0.96); border-top: 1px solid var(--stroke-1); }
+.tag.rebel { background: oklch(75% 0.14 60 / 0.15); color: oklch(85% 0.12 60); border-color: oklch(75% 0.14 60 / 0.4); }
+.country-card h3 .tag.rebel { margin-left: auto; }
+.country-item.rebel .tag { margin-left: auto; }
+.goal-chip {
+  position: absolute; z-index: 25; top: calc(var(--topbar-h, 64px) + 10px); left: 50%; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: var(--r-pill); cursor: pointer;
+  font: inherit; font-size: var(--fs-sm); color: var(--text-2); background: var(--glass-bg-solid, rgba(13,19,29,0.92)); border: 1px solid oklch(75% 0.14 60 / 0.45); box-shadow: var(--shadow-1);
+}
+.goal-chip b { color: oklch(88% 0.12 70); }
+.goal-chip .ico { width: 15px; height: 15px; color: oklch(82% 0.13 65); }
+.goal-chip.hidden { display: none; }
+.release-row { display: flex; gap: 6px; }
+.release-row select { flex: 1; min-width: 0; height: 32px; }

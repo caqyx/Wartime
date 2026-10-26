@@ -910,6 +910,45 @@ test('AI wasalizuje gracza (propozycja) i gracz ogłasza niepodległość', func
   assertConsistent();
 });
 
+test('odtworzenie upadłego państwa jako wasala', function () {
+  freshGame();
+  var S = WT.state, V = WT.vassal;
+  var ccc = S.provincesOf('CCC');
+  ccc.forEach(function (id) { S.setOwner(id, 'AAA'); });
+  WT.diplomacy.refreshCountries();
+  eq(G().countries.CCC.alive, false, 'CCC upadło');
+  assert(S.nationCandidates().indexOf('CCC') >= 0, 'CCC do odtworzenia');
+  assert(V.checkRelease('AAA', 'CCC', S.provincesOf('AAA')), 'nie można oddać wszystkich prowincji');
+  assert(V.checkRelease('AAA', 'BBB', [ccc[0]]), 'istniejącego państwa nie odtworzysz');
+  var res = V.releaseNation('AAA', 'CCC', ccc.slice(0, 2));
+  assert(res.ok, 'odtworzenie: ' + res.reason);
+  eq(G().countries.CCC.alive, true, 'CCC żyje');
+  eq(V.overlordOf('CCC'), 'AAA', 'CCC wasalem AAA');
+  eq(S.provincesOf('CCC').length, 2, 'dwie prowincje');
+  assert(ccc.slice(0, 2).indexOf(G().countries.CCC.capital) >= 0, 'stolica w nowych prowincjach');
+  assert(soldiers('CCC') >= 3000, 'milicja');
+  eq(S.nationCandidates().indexOf('CCC'), -1, 'już nie jest kandydatem');
+  for (var i = 0; i < 3; i++) WT.turn.end();
+  assertConsistent();
+});
+
+test('powstanie: gra państwem nieistniejącym w epoce (cel: ziemie rdzenne)', function () {
+  freshGame({ scenario: '1385', player: 'BBB' });
+  var S = WT.state;
+  eq(G().player, 'BBB', 'gracz = BBB');
+  eq(G().countries.BBB.alive, true, 'BBB powstało');
+  eq(S.provincesOf('BBB').length, 1, 'start w jednej prowincji');
+  assert(G().goal && G().goal.cores.length > 1, 'ziemie rdzenne');
+  assert(WT.diplomacy.atWar('BBB', 'KRL'), 'wojna z okupantem');
+  eq(S.armiesIn(G().goal.start).filter(function (a) { return a.owner !== 'BBB'; }).length, 0, 'garnizon okupanta wycofany');
+  G().goal.cores.forEach(function (id) { S.setOwner(id, 'BBB'); });
+  S.checkGoal();
+  eq(G().goal.done, true, 'cel osiągnięty');
+  var pr = S.goalProgress();
+  assert(pr.world.have >= pr.cores.total, 'licznik podboju');
+  for (var i = 0; i < 3; i++) WT.turn.end();
+});
+
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {
   freshGame({ player: 'AAA', god: true });
   var c = G().countries.AAA, t0 = c.treasury;
