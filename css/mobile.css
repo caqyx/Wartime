@@ -135,7 +135,9 @@ button, .country-item, .army-row, .log-head, .check { -webkit-tap-highlight-colo
   .log { right: calc(8px + var(--sa-r)); bottom: calc(8px + var(--sa-b)); width: auto; max-width: calc(100% - 16px); }
   .log:not(.collapsed) { left: calc(8px + var(--sa-l)); z-index: 13; }
   .log-head { min-height: 44px; padding: 0 12px; gap: 8px; }
-  .log.collapsed .log-head > span:first-child { max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log.collapsed .log-head > span:first-child { max-width: 22vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mm-btn { min-width: 40px; }
+  .log.collapsed .log-head > span:first-child .ico { margin: 0; }
   .log-body { max-height: 32vh; max-height: 32dvh; }
   .zoom-ctrl, body.in-game .zoom-ctrl { flex-direction: column; right: calc(8px + var(--sa-r)); bottom: calc(76px + var(--sa-b)); }
   .zc-btn { width: 44px; height: 44px; font-size: 24px; }
@@ -222,4 +224,11 @@ button, .country-item, .army-row, .log-head, .check { -webkit-tap-highlight-colo
 }
 @media (max-width: 900px), (max-height: 500px) {
   body.ob-open .zoom-ctrl { display: none; }
+}
+
+/* minimapa i podsumowanie tury na telefonie */
+@media (max-width: 900px), (max-height: 500px) {
+  .minimap { display: none !important; }
+  .turn-summary { left: 8px; right: 8px; width: auto; top: calc(var(--topbar-h, 56px) + 8px); max-height: 40vh; overflow-y: auto; }
+  .stats-grid { grid-template-columns: 1fr; }
 }

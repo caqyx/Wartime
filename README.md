@@ -90,6 +90,15 @@ python3 -m http.server 8000   # http://localhost:8000
 - **Zapis:** 5 slotów + autosave co 5 tur, eksport/import JSON.
 - **Konflikty 2026** (opcja): Rosja–Ukraina (okupowany Donbas, Krym), Izrael–Palestyna.
 
+## Czytelność i odczucia
+
+- **Animacje:** po turze armie i floty płynnie przechodzą na nowe pozycje; bitwy (pierścienie i skrzyżowane miecze), zajęcia prowincji i ostrzał pokazywane są efektami na mapie.
+- **Dźwięki** (syntezowane, bez plików): koniec tury, bitwa, wydarzenie, propozycja, rozkaz, sukces. Menu → „Dźwięk: włączony/wyłączony”.
+- **Podsumowanie tury** (prawy górny róg): zmiana skarbca i armii, bitwy wygrane/przegrane, zajęte/utracone prowincje oraz podpowiedzi „Co warto zrobić” (bilans ujemny, okrążone lub zmęczone armie, groźba buntu, punkty wojenne do wykorzystania, technologia do odkrycia, agresywna ekspansja, niewykorzystane rezerwy) — kliknięcie przenosi do problemu. Można wyłączyć.
+- **Minimapa** (prawy dolny róg, komputer): cały świat z prostokątem widoku; kliknięcie lub przeciągnięcie przenosi kamerę.
+- **Statystyki i wykresy** (menu): PKB, skarbiec, armia, prowincje, technologia i stabilność w czasie, z podglądem wartości po najechaniu.
+- **Samouczek** przy pierwszej grze (6 kroków), ponownie z menu → „Samouczek”.
+
 ## Struktura
 
 - `data/map.js` — generowane przez `tools/build_map.py` z Natural Earth (`pip install shapely numpy scipy matplotlib`, `python3 tools/build_map.py --preview`).

@@ -376,3 +376,8 @@ Fonty: systemowe sans + monospace dla liczb.
 - `country.stabMods [{v, until, why}]` (`addStab`, `stabilityMod` w `economy.stabilityTarget`), `country.ae` (`addAE`, `onConquest(cc, provs, factor)` z `diplomacy.annexOccupied`, `vassal.applyTreaty`, `vassal.annex`; `aeWarFactor` w AI), `province.unrest` (`unrestTarget`, dochód × (1 − unrest/200)), `province.acq` (tura przejęcia, `state.setOwner`).
 - Wydarzenia: `EVENTS`, `HISTORY` (scenariusz + data), `fire(ev, cc)` (gracz → `G.events`, AI → opcja `ai`), `answer(id, opt)`, `view(e)`, `pending()`; `G.lastEventTurn`, `G.historyDone`. Bunt: `revolt(prov)` → `state.spawnCountry` narodu rdzennego + wojna. Koalicje: `formCoalition`, `coalitionWar`.
 - `processTurn()` w `turn.end` po dyplomacji. UI: `ui.checkEvents()` po turze, tryb mapy `unrest`.
+
+### Czytelność (js/ui/render.js, js/ui/sound.js, js/ui/ui.js)
+- Render: `animateFrom({armies, fleets})` (przejście markerów 550 ms), `flash(prov, kind, delayMs)` (battle/occupy/shell/bomb), `attachMinimap(canvas)`.
+- `WT.sound.play(name)` (click, order, turn, battle, event, alert, win, bad), `enabled/setEnabled` (localStorage `wartime_sound`).
+- `G.history [{t, d, gdp, bal, cash, army, provs, tech, stab}]` (turn.recordHistory, maks. 600). UI: `openStats`, `showTurnSummary`, `adviceList`, `startTutorial` (localStorage `wartime_tutorial`).

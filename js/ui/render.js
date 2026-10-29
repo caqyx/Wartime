@@ -55,6 +55,8 @@
   var keysDown = {};
   var lastFrame = 0, needsDraw = true, pendingTiles = false, dashPhase = 0;
   var hitArmies = [], hitFleets = [];
+  var moveAnim = {}, effects = [];   // animacje przejścia jednostek po turze i efekty (bitwy, zajęcia)
+  var MOVE_ANIM_MS = 550, FX_MS = 1500;
   var pointer = { down: false, button: 0, sx: 0, sy: 0, lx: 0, ly: 0, moved: false, dragUnit: null, x: 0, y: 0 };
 
   // Stan interakcji ustawiany przez WT.ui
@@ -1030,7 +1032,7 @@
     Object.keys(byProv).forEach(function (pid) {
       var list = byProv[pid].sort(function (a, b) { return a.owner === me ? -1 : b.owner === me ? 1 : a.owner < b.owner ? -1 : 1; });
       var c = mapToScreen(MAP.provinces[pid].cx, MAP.provinces[pid].cy);
-      layoutBoxes(list, c[0], c[1]).forEach(function (b) { drawArmyBox(b, me); });
+      layoutBoxes(list, c[0], c[1]).forEach(function (b) { var o = animOffset(b.army.id); b.x += o[0]; b.y += o[1]; drawArmyBox(b, me); });
     });
     setLetterSpacing(0);
   }
@@ -1107,7 +1109,7 @@
     Object.keys(byPort).forEach(function (pid) {
       var pt = portPoint(+pid), s = mapToScreen(pt[0], pt[1]);
       if (s[0] < -60 || s[0] > viewW + 60 || s[1] < -30 || s[1] > viewH + 30) return;
-      byPort[pid].forEach(function (f, i) { drawFleetIcon(f, s[0] - 4, s[1] + 4 + i * 22, me); });
+      byPort[pid].forEach(function (f, i) { var o = animOffset(f.id); drawFleetIcon(f, s[0] - 4 + o[0], s[1] + 4 + i * 22 + o[1], me); });
     });
   }
   function drawFleetIcon(f, x, y, me) {
@@ -1238,6 +1240,100 @@
     ctx.restore();
   }
 
+  // ---------------------------------------------------------------------------
+  // Animacje po turze: przejście jednostek z poprzedniej pozycji, efekty bitew i zajęć
+  // ---------------------------------------------------------------------------
+  function ease(t) { return 1 - Math.pow(1 - t, 3); }
+  /** Przesunięcie (px ekranu) markera jednostki w trakcie animacji przejścia. */
+  function animOffset(id) {
+    var a = moveAnim[id]; if (!a) return [0, 0];
+    var t = (performance.now() - a.t0) / MOVE_ANIM_MS;
+    if (t >= 1) { delete moveAnim[id]; return [0, 0]; }
+    var k = 1 - ease(Math.max(0, t));
+    return [(a.from[0] - a.to[0]) * cam.zoom * k, (a.from[1] - a.to[1]) * cam.zoom * k];
+  }
+  function nodeXY(id) { return id >= SEA_BASE || !MAP.provinces[id] ? portPoint(id) : provPoint(id); }
+  /** snapshot: { armies: {id: prov}, fleets: {id: node} } sprzed tury. */
+  R.animateFrom = function (snapshot) {
+    var g = G(); if (!g || !snapshot) return;
+    var t0 = performance.now();
+    moveAnim = {};
+    Object.keys(snapshot.armies || {}).forEach(function (id) {
+      var a = g.armies[id], from = snapshot.armies[id];
+      if (a && !a.embarked && a.prov !== from && MAP.provinces[from]) moveAnim[id] = { from: provPoint(from), to: provPoint(a.prov), t0: t0 };
+    });
+    Object.keys(snapshot.fleets || {}).forEach(function (id) {
+      var f = (g.fleets || {})[id], from = snapshot.fleets[id];
+      if (f && f.prov !== from) moveAnim[id] = { from: nodeXY(from), to: nodeXY(f.prov), t0: t0 };
+    });
+    needsDraw = true;
+  };
+  /** Efekt na mapie: kind 'battle' | 'occupy' | 'shell' | 'bomb'. */
+  R.flash = function (provId, kind, delayMs) {
+    if (!MAP.provinces[provId] || effects.length > 40) return;
+    var p = MAP.provinces[provId];
+    effects.push({ x: p.cx, y: p.cy, kind: kind || 'battle', t0: performance.now() + (delayMs || 0) });
+    needsDraw = true;
+  };
+  function drawEffects() {
+    if (!effects.length) return;
+    applyScreenTransform();
+    var now = performance.now();
+    effects = effects.filter(function (e) { return now - e.t0 < FX_MS; });
+    effects.forEach(function (e) {
+      var t = (now - e.t0) / FX_MS; if (t < 0) return;
+      var s = mapToScreen(e.x, e.y);
+      if (s[0] < -80 || s[0] > viewW + 80 || s[1] < -80 || s[1] > viewH + 80) return;
+      var rgb = e.kind === 'occupy' ? COLORS.accentRgb : e.kind === 'shell' || e.kind === 'bomb' ? '255,170,80' : '255,107,107';
+      for (var k = 0; k < 2; k++) {
+        var tt = Math.min(1, t * 1.3 - k * 0.25); if (tt <= 0) continue;
+        ctx.beginPath(); ctx.arc(s[0], s[1], 8 + ease(tt) * 34, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(' + rgb + ',' + (0.85 * (1 - tt)).toFixed(3) + ')'; ctx.lineWidth = 2.5 - tt * 1.5; ctx.stroke();
+      }
+      if (e.kind === 'battle' && t < 0.7) {   // błysk + skrzyżowane miecze
+        var a = 1 - t / 0.7;
+        ctx.beginPath(); ctx.arc(s[0], s[1], 10 * (1 - t * 0.5), 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,220,160,' + (0.55 * a).toFixed(3) + ')'; ctx.fill();
+        ctx.strokeStyle = 'rgba(255,245,230,' + a.toFixed(3) + ')'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(s[0] - 7, s[1] - 7); ctx.lineTo(s[0] + 7, s[1] + 7); ctx.moveTo(s[0] + 7, s[1] - 7); ctx.lineTo(s[0] - 7, s[1] + 7); ctx.stroke();
+        ctx.lineCap = 'butt';
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Minimapa (obraz świata z cache + prostokąt widoku); kliknięcie przenosi kamerę
+  // ---------------------------------------------------------------------------
+  var mini = { el: null, ctx: null, key: '' };
+  R.attachMinimap = function (el) {
+    mini.el = el; mini.ctx = el.getContext('2d'); mini.key = '';
+    var jump = function (e) {
+      var r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * MAP.width, y = (e.clientY - r.top) / r.height * MAP.height;
+      R.centerOn(x, y); e.preventDefault();
+    };
+    var down = false;
+    el.addEventListener('pointerdown', function (e) { down = true; try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignoruj */ } jump(e); });
+    el.addEventListener('pointermove', function (e) { if (down) jump(e); });
+    el.addEventListener('pointerup', function () { down = false; });
+    el.addEventListener('pointercancel', function () { down = false; });
+  };
+  function drawMinimap() {
+    if (!mini.el || !world || !mini.el.offsetWidth) return;
+    var key = cam.x.toFixed(0) + ',' + cam.y.toFixed(0) + ',' + cam.zoom.toFixed(3) + ',' + world.ver;
+    if (key === mini.key) return;
+    mini.key = key;
+    var d = Math.min(2, window.devicePixelRatio || 1), w = mini.el.clientWidth, h = mini.el.clientHeight;
+    if (mini.el.width !== Math.round(w * d)) { mini.el.width = Math.round(w * d); mini.el.height = Math.round(h * d); }
+    var g = mini.ctx;
+    g.setTransform(d, 0, 0, d, 0, 0);
+    g.fillStyle = COLORS.seaDeep; g.fillRect(0, 0, w, h);
+    g.drawImage(world.canvas, 0, 0, world.canvas.width, world.canvas.height, 0, 0, w, h);
+    var kx = w / MAP.width, ky = h / MAP.height;
+    var vx = cam.x * kx, vy = cam.y * ky, vw = viewW / cam.zoom * kx, vh = viewH / cam.zoom * ky;
+    g.fillStyle = 'rgba(' + COLORS.accentRgb + ',0.10)'; g.fillRect(vx, vy, vw, vh);
+    g.strokeStyle = COLORS.accent; g.lineWidth = 1.5; g.strokeRect(vx, vy, vw, vh);
+  }
+
   // Duch przeciąganej jednostki przy kursorze
   function drawDragGhost() {
     if (!pointer.dragUnit || !pointer.moved) return;
@@ -1254,7 +1350,7 @@
   // Pętla klatek
   // ---------------------------------------------------------------------------
   // animowany przesuw kresek tylko dla planowanej trasy i trasy zaznaczonej jednostki (zaznaczenie prowincji jest statyczne)
-  function hasAnimation() { return !!(view.preview || view.pending || selHasRoute() || airborne() || shelling()); }
+  function hasAnimation() { return !!(view.preview || view.pending || selHasRoute() || airborne() || shelling() || effects.length || Object.keys(moveAnim).length); }
   function shelling() {
     var g = G(); if (!g || !g.fleets) return false;
     for (var id in g.fleets) if (g.fleets[id].owner === g.player && g.fleets[id].shellTarget != null) return true;
@@ -1306,7 +1402,9 @@
     drawArmies();
     drawFleets();
     drawAir();
+    drawEffects();
     drawDragGhost();
+    drawMinimap();
   }
   var fps = { frames: 0, t0: 0, value: 0 };
   function fpsTick(now) { fps.frames++; if (now - fps.t0 > 1000) { fps.value = fps.frames * 1000 / (now - fps.t0); fps.frames = 0; fps.t0 = now; } }

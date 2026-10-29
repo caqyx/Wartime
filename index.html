@@ -41,6 +41,9 @@
       <button class="menu-item" data-act="science">Nauka i technologie</button>
       <button class="menu-item" data-act="ranking">Ranking państw</button>
       <button class="menu-item" data-act="god-toggle" id="menu-god-toggle">Włącz God Mode</button>
+      <button class="menu-item" data-act="stats">Statystyki i wykresy</button>
+      <button class="menu-item" data-act="tutorial">Samouczek</button>
+      <button class="menu-item" data-act="sound" id="menu-sound">Dźwięk: włączony</button>
       <button class="menu-item" data-act="help">Skróty klawiszowe</button>
       <button class="menu-item danger" data-act="exit">Wyjście do menu głównego</button>
     </div>
@@ -67,6 +70,10 @@
       <button class="zc-btn zoom-btn" id="zc-multi" title="Zaznacz wiele prowincji (B) — budowa na wszystkich naraz" aria-label="Zaznacz wiele prowincji" aria-pressed="false"></button>
       <button class="zc-btn zoom-btn" id="zc-home" title="Wyśrodkuj na moim państwie" aria-label="Wyśrodkuj na moim państwie"><span class="zc-home-ico" aria-hidden="true"></span></button>
     </div>
+
+    <!-- Minimapa i podsumowanie tury -->
+    <canvas id="minimap" class="minimap hidden" width="200" height="120" aria-label="Minimapa — kliknij, aby przenieść widok"></canvas>
+    <aside id="turn-summary" class="turn-summary hidden" aria-live="polite"></aside>
 
     <!-- Pasek rozkazu -->
     <div id="order-bar" class="order-bar hidden"></div>
@@ -134,6 +141,7 @@
   <script src="js/core/god.js"></script>
   <script src="js/core/turn.js"></script>
   <script src="js/core/save.js"></script>
+  <script src="js/ui/sound.js"></script>
   <script src="js/ui/render.js"></script>
   <script src="js/ui/ui.js"></script>
   <script src="js/main.js"></script>

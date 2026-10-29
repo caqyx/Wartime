@@ -208,6 +208,7 @@
     crown: '<path d="M3.5 8.5l4.5 4L12 5.5l4 7 4.5-4-2 10.5h-13z"/><path d="M6 21h12"/>',
     scroll: '<path d="M8 4h10a2 2 0 0 1 2 2v1.5h-4"/><path d="M16 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1.5h10"/><path d="M8 4a2 2 0 0 0-2 2v11"/><path d="M9.5 9h3.5M9.5 12.5h3.5"/>',
     flame: '<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5.5.3 1.6 1 2.5 2 3C11.5 8 11.5 5.5 12 3z"/>',
+    bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
     trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H4.5a3 3 0 0 0 3.5 4M16 6h3.5a3 3 0 0 1-3.5 4"/><path d="M12 13v4M8.5 20.5h7M9.5 17h5"/>',
     select: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17.5l2 2 4.5-4.5"/>',
     mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/>'
@@ -263,7 +264,7 @@
     if (menuBtn && !menuBtn.querySelector('.ico')) { menuBtn.innerHTML = icon('menu'); menuBtn.classList.add('btn-icon'); menuBtn.setAttribute('aria-label', 'Menu'); }
     const endLabel = document.querySelector('#btn-endturn .btn-label'); if (endLabel) endLabel.classList.remove('btn-label');
     const god = $('tb-god'); if (god && !god.querySelector('.ico')) god.innerHTML = icon('sparkles') + 'GOD';
-    const menuIcons = { settings: 'sliders', science: 'flask', ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout' };
+    const menuIcons = { settings: 'sliders', science: 'flask', ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout', stats: 'chart', tutorial: 'info', sound: 'bell' };
     document.querySelectorAll('#menu .menu-item').forEach((b) => {
       if (b.querySelector('.ico')) return;
       const txt = document.createElement('span'); txt.textContent = b.textContent; b.textContent = '';
@@ -509,6 +510,9 @@
     applySetup();
   }
   function showStart() {
+    if ($('minimap')) $('minimap').classList.add('hidden');
+    if ($('turn-summary')) $('turn-summary').classList.add('hidden');
+    if ($('tutorial')) $('tutorial').remove();
     S.inGame = false; S.goalShow = false; if ($('goal-chip')) $('goal-chip').classList.add('hidden'); S.airSel = null; S.shellSel = null; S.selSea = -1; R().view.shellRange = null; R().view.selSea = -1; R().view.airRange = null; R().view.radarRing = null; S.multi = null; R().view.multi = null; S.sel = null; S.selProv = -1; S.godTool = null;
     document.body.classList.remove('in-game', 'ob-open');
     ['topbar', 'mapmodes', 'log', 'province-panel', 'diplo-panel', 'god-panel', 'order-bar', 'menu', 'legend'].forEach((id) => $(id).classList.add('hidden'));
@@ -540,6 +544,167 @@
     if (g && !WT.G) WT.G = g;
     enterGame(true);
   }
+  // ===========================================================================
+  // Podsumowanie tury i podpowiedzi
+  // ===========================================================================
+  function turnSnapshot() {
+    const g = G(), cc = me(), c = liveCountry(cc) || {}, armies = {}, fleets = {};
+    Object.keys(g.armies).forEach((id) => { armies[id] = g.armies[id].prov; });
+    Object.keys(g.fleets || {}).forEach((id) => { fleets[id] = g.fleets[id].prov; });
+    return { armies, fleets, treasury: c.treasury || 0, provs: provincesOf(cc).length, ctrl: (call('state.controlledBy', [cc], []) || []).length,
+      soldiers: armiesOf(cc).reduce((s, a) => s + a.size, 0), wars: (g.wars || []).filter((w) => w.attackers.concat(w.defenders).indexOf(cc) >= 0).length };
+  }
+  function showTurnSummary(snap, fx) {
+    const el = $('turn-summary'); if (!el || !G() || !S.inGame || S.summaryOff) return;
+    const now = turnSnapshot(), p = me();
+    const battles = fx.filter((f) => f[0] === 'battle' && (f[2].attacker === p || f[2].defender === p));
+    const won = battles.filter((f) => f[2].winnerCc === p).length;
+    const occ = fx.filter((f) => f[0] === 'occupy');
+    const gained = occ.filter((f) => f[2].by === p).length, lost = occ.filter((f) => f[2].from === p && f[2].by !== p).length;
+    const dCash = now.treasury - snap.treasury, dSold = now.soldiers - snap.soldiers;
+    const line = (ic, txt, cls) => '<li class="' + (cls || '') + '">' + icon(ic, 'ico-sm') + '<span>' + txt + '</span></li>';
+    let h = '<div class="ts-head"><b>Tura ' + G().turn + '</b><span class="dim">' + esc(dateStr()) + '</span><button class="close" id="ts-close" aria-label="Zamknij">' + icon('x') + '</button></div><ul class="ts-list">';
+    h += line('coins', 'Skarbiec ' + (dCash >= 0 ? '+' : '') + fmtNum(dCash, 2) + ' mld $', dCash < 0 ? 'neg' : '');
+    if (dSold) h += line('users', 'Armia ' + (dSold > 0 ? '+' : '') + fmtK(dSold), dSold < 0 ? 'neg' : '');
+    if (battles.length) h += line('swords', 'Bitwy: ' + battles.length + ' (wygrane ' + won + ', przegrane ' + (battles.length - won) + ')', won < battles.length - won ? 'neg' : 'pos');
+    if (gained || lost) h += line('pin', 'Prowincje: zajęte ' + gained + ', utracone ' + lost, lost > gained ? 'neg' : 'pos');
+    if (now.provs !== snap.provs) h += line('flag', 'Twoje prowincje: ' + snap.provs + ' → ' + now.provs, now.provs < snap.provs ? 'neg' : 'pos');
+    h += '</ul>';
+    const tips = adviceList();
+    if (tips.length) h += '<div class="ts-tips-title">Co warto zrobić</div><ul class="ts-list ts-tips">' + tips.slice(0, 4).map((t) => '<li' + (t.prov != null ? ' data-prov="' + t.prov + '"' : '') + (t.act ? ' data-tact="' + t.act + '"' : '') + ' class="' + (t.cls || '') + '">' + icon(t.icon || 'info', 'ico-sm') + '<span>' + t.text + '</span></li>').join('') + '</ul>';
+    h += '<label class="ts-off"><input type="checkbox" id="ts-off"> nie pokazuj podsumowań</label>';
+    el.innerHTML = h;
+    el.classList.remove('hidden');
+    clearTimeout(S.tsTimer);
+    if (isMobile()) S.tsTimer = setTimeout(() => el.classList.add('hidden'), 7000);   // na telefonie znika sam
+    $('ts-close').addEventListener('click', () => el.classList.add('hidden'));
+    $('ts-off').addEventListener('change', (e) => { S.summaryOff = e.target.checked; if (S.summaryOff) el.classList.add('hidden'); });
+    el.querySelectorAll('[data-prov]').forEach((li) => li.addEventListener('click', () => { R().centerOnProvince(+li.dataset.prov, 1.4); openProvince(+li.dataset.prov); }));
+    el.querySelectorAll('[data-tact]').forEach((li) => li.addEventListener('click', () => {
+      const a = li.dataset.tact;
+      if (a === 'science') openScience(); else if (a.indexOf('conf:') === 0) openConference(a.slice(5)); else if (a === 'diplo') openDiplomacy(null);
+    }));
+  }
+  /** Podpowiedzi: najważniejsze problemy i okazje gracza. */
+  function adviceList() {
+    const p = me(), c = liveCountry(p) || {}, out = [], g = G();
+    if (!isGod() && c.lastIncome - c.lastExpense < 0) out.push({ icon: 'chart', cls: 'neg', text: 'Bilans ujemny (' + fmtNum(c.lastIncome - c.lastExpense, 2) + ' mld/tura) — podnieś podatek, zmniejsz armię lub buduj fabryki.' });
+    if (WT.warfare) {
+      const cut = armiesOf(p).filter((a) => !a.embarked && !WT.warfare.isSupplied(a))[0];
+      if (cut) out.push({ icon: 'swords', cls: 'neg', prov: cut.prov, text: 'Okrążona armia w: ' + esc(provStatic(cut.prov).name) + ' — przebij się do swoich.' });
+      const tired = armiesOf(p).filter((a) => WT.warfare.orgOf(a) < 0.35)[0];
+      if (tired) out.push({ icon: 'users', prov: tired.prov, text: 'Armia w ' + esc(provStatic(tired.prov).name) + ' ma niską organizację — daj jej odpocząć na swojej ziemi.' });
+    }
+    const riot = provincesOf(p).filter((id) => (provDyn(id).unrest || 0) >= 60).sort((a, b) => provDyn(b).unrest - provDyn(a).unrest)[0];
+    if (riot != null) out.push({ icon: 'flame', cls: 'neg', prov: riot, text: 'Grozi bunt w: ' + esc(provStatic(riot).name) + ' (niepokoje ' + provDyn(riot).unrest + ') — postaw garnizon lub fort.' });
+    if (WT.vassal) {
+      const enemies = call('diplomacy.enemiesOf', [p], []) || [];
+      const best = enemies.map((e) => ({ e, pts: WT.vassal.warPoints(p, e).total })).filter((x) => x.pts >= 20).sort((a, b) => b.pts - a.pts)[0];
+      if (best) out.push({ icon: 'trophy', cls: 'pos', act: 'conf:' + best.e, text: 'Masz ' + best.pts + ' pkt wojennych wobec: ' + esc(countryName(best.e)) + ' — otwórz konferencję pokojową.' });
+    }
+    if (WT.tech && WT.tech.TREE) {
+      const cheap = WT.tech.TREE.filter((t) => call('tech.canResearch', [p, t.id], { ok: false }).ok)[0];
+      if (cheap) out.push({ icon: 'flask', cls: 'pos', act: 'science', text: 'Stać cię na technologię: ' + esc(cheap.name) + '.' });
+    }
+    if (WT.world && WT.world.aeOf(p) >= WT.world.AE_COALITION) out.push({ icon: 'handshake', cls: 'neg', act: 'diplo', text: 'Agresywna ekspansja ' + Math.round(WT.world.aeOf(p)) + ' — sąsiedzi tworzą koalicję. Zrób przerwę od podbojów.' });
+    const atWar = (call('diplomacy.enemiesOf', [p], []) || []).length > 0;
+    if (atWar && (c.manpower || 0) > 50 && !isGod() && c.treasury > 5) out.push({ icon: 'users', text: 'Masz ' + fmtInt(c.manpower) + ' tys. rezerw — rekrutuj w prowincjach z koszarami.' });
+    return out;
+  }
+
+  // ===========================================================================
+  // Statystyki: małe wykresy liniowe (jedna seria na wykres, wspólna oś czasu)
+  // ===========================================================================
+  const STAT_SERIES = [
+    { k: 'gdp', label: 'PKB', unit: ' mld $', fmt: (v) => fmtInt(v) },
+    { k: 'cash', label: 'Skarbiec', unit: ' mld $', fmt: (v) => fmtNum(v, 1) },
+    { k: 'army', label: 'Armia', unit: '', fmt: (v) => fmtK(v) },
+    { k: 'provs', label: 'Prowincje', unit: '', fmt: (v) => fmtInt(v) },
+    { k: 'tech', label: 'Technologia', unit: '', fmt: (v) => fmtNum(v, 2) },
+    { k: 'stab', label: 'Stabilność', unit: '%', fmt: (v) => fmtInt(v) }
+  ];
+  function openStats() {
+    const h = (G().history || []).slice();
+    if (h.length < 2) { toast('Wykresy pojawią się po kilku turach', '', 2500); return; }
+    const body = '<div class="stats-grid">' + STAT_SERIES.map((s) => statChart(h, s)).join('') + '</div><div class="hint">Najedź na wykres, aby zobaczyć wartość w danej turze.</div>';
+    openModal({ title: icon('chart') + ' Statystyki: ' + esc(countryName(me())), wide: true, body, onOpen: (el) => bindStatCharts(el, h) });
+  }
+  function statChart(h, s) {
+    const W = 300, H = 110, P = { l: 6, r: 6, t: 8, b: 18 };
+    const vals = h.map((x) => +x[s.k] || 0), min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+    const lo = min >= 0 && min < (max - min) * 0.5 ? 0 : min, hi = max === lo ? lo + 1 : max;
+    const X = (i) => P.l + (W - P.l - P.r) * (h.length === 1 ? 0 : i / (h.length - 1)), Y = (v) => P.t + (H - P.t - P.b) * (1 - (v - lo) / (hi - lo));
+    const pts = vals.map((v, i) => X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ');
+    const last = vals[vals.length - 1], first = vals[0], d = last - first;
+    return '<figure class="stat-chart" data-k="' + s.k + '"><figcaption><span>' + esc(s.label) + '</span><b>' + s.fmt(last) + s.unit + '</b><span class="' + (d >= 0 ? 'pos' : 'neg') + '">' + (d >= 0 ? '+' : '−') + s.fmt(Math.abs(d)) + '</span></figcaption>' +
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="' + esc(s.label) + ' w czasie">' +
+      '<line class="base" x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + Y(lo) + '" y2="' + Y(lo) + '"/>' +
+      '<polyline class="line" points="' + pts + '"/><line class="cross hidden" y1="' + P.t + '" y2="' + (H - P.b) + '"/><circle class="dot hidden" r="4"/>' +
+      '</svg><div class="stat-axis"><span>tura ' + h[0].t + '</span><span>tura ' + h[h.length - 1].t + '</span></div>' +
+      '<div class="stat-tip hidden"></div></figure>';
+  }
+  function bindStatCharts(el, h) {
+    el.querySelectorAll('.stat-chart').forEach((fig) => {
+      const s = STAT_SERIES.find((x) => x.k === fig.dataset.k), svg = fig.querySelector('svg'), tip = fig.querySelector('.stat-tip');
+      const vals = h.map((x) => +x[s.k] || 0), min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+      const lo = min >= 0 && min < (max - min) * 0.5 ? 0 : min, hi = max === lo ? lo + 1 : max;
+      const move = (e) => {
+        const r = svg.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width;
+        const i = Math.max(0, Math.min(h.length - 1, Math.round((fx * 300 - 6) / 288 * (h.length - 1))));
+        const x = 6 + 288 * (h.length === 1 ? 0 : i / (h.length - 1)), y = 8 + 84 * (1 - (vals[i] - lo) / (hi - lo));
+        const cr = svg.querySelector('.cross'), dot = svg.querySelector('.dot');
+        cr.setAttribute('x1', x); cr.setAttribute('x2', x); cr.classList.remove('hidden');
+        dot.setAttribute('cx', x); dot.setAttribute('cy', y); dot.classList.remove('hidden');
+        tip.innerHTML = '<b>' + s.fmt(vals[i]) + s.unit + '</b> · tura ' + h[i].t + (h[i].d ? ' · ' + esc(h[i].d) : '');
+        tip.style.left = Math.min(r.width - 150, Math.max(0, x / 300 * r.width - 60)) + 'px';
+        tip.classList.remove('hidden');
+      };
+      svg.addEventListener('pointermove', move);
+      svg.addEventListener('pointerdown', move);
+      svg.addEventListener('pointerleave', () => { svg.querySelector('.cross').classList.add('hidden'); svg.querySelector('.dot').classList.add('hidden'); tip.classList.add('hidden'); });
+    });
+  }
+
+  // ===========================================================================
+  // Samouczek (pierwsza gra; ponownie z menu)
+  // ===========================================================================
+  const TUTORIAL = [
+    { sel: '#tb-country', title: 'Twoje państwo', text: 'Górny pasek: data, skarbiec, bilans na turę, rezerwy, stabilność i armia. Kliknij nazwę państwa, aby wyśrodkować mapę.' },
+    { sel: '#map', title: 'Mapa i armie', text: 'Kliknij swoją armię (pigułka z liczbą), potem PPM na cel — albo przeciągnij armię. Pasek rozkazu pozwala wysłać część wojska, wybrać trasę lądem/morzem i punkty pośrednie.' },
+    { sel: '#map', title: 'Prowincje', text: 'Kliknij prowincję: budynki (fabryka, fort, port, koszary, uniwersytet), rekrutacja (piechota, wojska szybkie, wsparcie), stocznia. Przycisk zaznaczania wielu prowincji buduje na wszystkich naraz.' },
+    { sel: '#btn-diplomacy', title: 'Dyplomacja', text: 'Wojny, sojusze, pakty, handel prowincjami, konferencja pokojowa za punkty wojenne, wasale i agresywna ekspansja.' },
+    { sel: '#mapmodes', title: 'Tryby mapy', text: 'Polityczna, dyplomatyczna, ekonomiczna, teren i niepokoje (klawisze 1–5).' },
+    { sel: '#btn-endturn', title: 'Koniec tury', text: 'Spacja kończy turę (tydzień). Po turze zobaczysz podsumowanie i podpowiedzi, co warto zrobić. Powodzenia!' }
+  ];
+  function startTutorial(force) {
+    let done = false; try { done = localStorage.getItem('wartime_tutorial') === 'done'; } catch (e) { /* brak */ }
+    if (done && !force) return;
+    S.tutStep = 0; renderTutorial();
+  }
+  function endTutorial() {
+    S.tutStep = null; const el = $('tutorial'); if (el) el.remove();
+    try { localStorage.setItem('wartime_tutorial', 'done'); } catch (e) { /* brak */ }
+  }
+  function renderTutorial() {
+    let el = $('tutorial');
+    if (S.tutStep == null || S.tutStep >= TUTORIAL.length) { endTutorial(); return; }
+    if (!el) { el = document.createElement('div'); el.id = 'tutorial'; el.className = 'tutorial'; document.querySelector('#app').appendChild(el); }
+    const st = TUTORIAL[S.tutStep], tgt = document.querySelector(st.sel), r = tgt && tgt.offsetWidth ? tgt.getBoundingClientRect() : null;
+    const big = !r || r.width > window.innerWidth * 0.6;
+    el.innerHTML = (big ? '' : '<div class="tut-ring" style="left:' + (r.left - 6) + 'px;top:' + (r.top - 6) + 'px;width:' + (r.width + 12) + 'px;height:' + (r.height + 12) + 'px"></div>') +
+      '<div class="tut-card glass"><div class="tut-step">' + (S.tutStep + 1) + ' / ' + TUTORIAL.length + '</div><h3>' + esc(st.title) + '</h3><p>' + esc(st.text) + '</p>' +
+      '<div class="row-actions"><button class="btn btn-ghost btn-sm" id="tut-skip">Pomiń</button><button class="btn btn-primary btn-sm" id="tut-next">' + (S.tutStep === TUTORIAL.length - 1 ? 'Zaczynamy' : 'Dalej') + '</button></div></div>';
+    const card = el.querySelector('.tut-card');
+    if (!big) {
+      const cw = Math.min(340, window.innerWidth - 24), below = r.bottom + 14 + 180 < window.innerHeight;
+      card.style.left = Math.max(12, Math.min(window.innerWidth - cw - 12, r.left + r.width / 2 - cw / 2)) + 'px';
+      card.style.top = (below ? r.bottom + 14 : Math.max(12, r.top - 200)) + 'px';
+    } else card.classList.add('center');
+    $('tut-next').addEventListener('click', () => { S.tutStep++; renderTutorial(); });
+    $('tut-skip').addEventListener('click', endTutorial);
+  }
+  function syncSoundLabel() { const b = $('menu-sound'); if (b) { const t = b.querySelector('span:last-child') || b; t.textContent = 'Dźwięk: ' + (WT.sound && WT.sound.enabled() ? 'włączony' : 'wyłączony'); } }
+
   function aggressionLabel(v) { return v <= 0 ? 'Pokojowa (bez nowych wojen)' : v < 35 ? 'Niska' : v <= 65 ? 'Standardowa' : v < 90 ? 'Wysoka' : 'Bardzo wysoka'; }
   function bindStart() {
     const ag = $('opt-aggr');
@@ -568,6 +733,8 @@
     S.godCC = me();
     R().invalidate();
     if (centerView) R().centerOnCountry(me(), 0.8);
+    $('minimap').classList.remove('hidden'); $('turn-summary').classList.add('hidden');
+    setTimeout(() => startTutorial(false), 600);
     refreshAll();
     setTimeout(checkProposals, 300);
   }
@@ -612,6 +779,7 @@
     el.classList.remove('hidden');
     if (done && !g.goal.shown) {
       g.goal.shown = true;
+      if (WT.sound) WT.sound.play('win');
       openModal({ title: icon('trophy') + ' Niepodległość odzyskana!', body: '<p><b>' + esc(countryName(me())) + '</b> odzyskuje wszystkie ziemie rdzenne. Nowy cel: podbój świata — licznik pokazuje udział prowincji twoich i twoich wasali.</p>', buttons: [{ label: 'Dalej', cls: 'btn-primary' }] });
     }
   }
@@ -668,6 +836,9 @@
     else if (act === 'science') openScience();
     else if (act === 'settings') openSettings();
     else if (act === 'help') openHelp();
+    else if (act === 'stats') openStats();
+    else if (act === 'tutorial') startTutorial(true);
+    else if (act === 'sound') { WT.sound.setEnabled(!WT.sound.enabled()); syncSoundLabel(); if (WT.sound.enabled()) WT.sound.play('click'); }
     else if (act === 'exit') confirmModal('Wyjście', 'Wrócić do menu głównego? Niezapisany postęp zostanie utracony (autozapis co 5 tur).', 'Wyjdź', () => { WT.G = null; showStart(); }, true);
   }
   function openHelp() {
@@ -944,6 +1115,7 @@
       else res = call('military.order', [u.id, plan.target, sizeArg, { via }], null);
     }
     closeOrderBar();
+    if (WT.sound) WT.sound.play(!res || res.ok === false ? 'bad' : 'order');
     if (!res || res.ok === false) toast((res && res.reason) || 'Nie można wydać rozkazu', 'bad');
     else toast(res.reason || (plan.kind === 'sea' ? 'Desant zaplanowany' : 'Rozkaz wydany: ' + nodeName(plan.target) + ' (' + turnsText(plan.turns) + ')'), 'ok', 2200);
     R().view.preview = null;
@@ -1292,6 +1464,7 @@
   function toggleDiplomacy() { if ($('diplo-panel').classList.contains('hidden')) openDiplomacy(S.diploCC); else closeDiplomacy(); }
   function openDiplomacy(cc) {
     $('god-panel').classList.add('hidden');
+    if ($('turn-summary')) $('turn-summary').classList.add('hidden');
     if (isMobile() && S.selProv >= 0) closeProvince();
     if (cc && cc !== me()) S.diploCC = cc;
     $('diplo-panel').classList.remove('hidden', 'sheet-collapsed', 'sheet-expanded');
@@ -1964,15 +2137,23 @@
     $('busy').classList.remove('hidden');
     $('btn-endturn').disabled = true;
     const before = new Set(G().log || []);
+    const snap = turnSnapshot(), fx = [], onBattle = (r) => { if (fx.length < 40) fx.push(['battle', r.prov, r]); }, onOcc = (r) => { if (fx.length < 60) fx.push(['occupy', r.prov, r]); };
+    WT.events.on('battle', onBattle); WT.events.on('occupy', onOcc);
     setTimeout(() => {
       let res = null;
       try { res = WT.turn && WT.turn.end ? WT.turn.end() : null; if (!res && !(WT.turn && WT.turn.end)) toast('Brak WT.turn.end', 'bad'); }
       catch (e) { console.error(e); toast('Błąd podczas przetwarzania tury: ' + e.message, 'bad', 6000); }
+      WT.events.off('battle', onBattle); WT.events.off('occupy', onOcc);
       S.busy = false;
       $('busy').classList.add('hidden');
       R().invalidate();
+      if (R().animateFrom) R().animateFrom(snap);
+      fx.forEach((f, i) => { if (R().flash) R().flash(f[1], f[0], Math.min(i, 12) * 60); });
+      const myBattle = fx.some((f) => f[0] === 'battle' && (f[2].attacker === me() || f[2].defender === me()));
+      if (WT.sound) WT.sound.play(myBattle ? 'battle' : 'turn');
       validateSelection();
       turnToasts(before, res);
+      showTurnSummary(snap, fx);
       refreshAll();
       checkGameOver();
       checkEvents();
@@ -2039,6 +2220,7 @@
     const pr = (g.proposals || []).find((x) => x.to === g.player && !S.answered[x.id]);
     if (!pr) return;
     S.proposalOpen = true;
+    if (WT.sound) WT.sound.play('alert');
     const answer = (acc) => {
       S.answered[pr.id] = true;
       const res = call('diplomacy.answerProposal', [pr.id, acc], null);
@@ -2060,6 +2242,7 @@
     const e = WT.world.pending()[0]; if (!e) { checkProposals(); return; }
     const v = WT.world.view(e);
     S.proposalOpen = true;
+    if (WT.sound) WT.sound.play('event');
     openModal({
       title: icon('flame') + ' ' + esc(v.title), dismissable: false,
       body: '<p>' + esc(v.text) + '</p><div class="event-opts">' + v.options.map((o, i) => '<button class="btn event-opt" data-opt="' + i + '"><b>' + esc(o.label) + '</b><small>' + esc(o.desc) + '</small></button>').join('') + '</div>',
@@ -2803,6 +2986,8 @@
     bindSheets();
     bindKeys();
     bindGameEvents();
+    if (R().attachMinimap) R().attachMinimap($('minimap'));
+    syncSoundLabel();
   };
   UI.fatal = function (msg) { const f = $('fatal'); f.textContent = msg; f.classList.remove('hidden'); };
 })();
