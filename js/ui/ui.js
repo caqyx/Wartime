@@ -1033,6 +1033,17 @@
     if (pd.unrest) h += '<span class="k">Niepokoje</span><span class="v ' + (pd.unrest > 30 ? 'neg' : '') + '">' + fmtInt(pd.unrest) + '</span>';
     return h + '</div></div>';
   }
+  /** Skład (pasek piechota/szybkie/wsparcie), organizacja i zaopatrzenie armii. */
+  function armyDetailHtml(a) {
+    const W = WT.warfare; if (!W) return '';
+    const sh = W.shares(a), org = Math.round(W.orgOf(a) * 100), sup = W.isSupplied(a);
+    const pct = (v) => Math.round(v * 100);
+    return '<div class="army-detail"><span class="mixbar" title="' + esc(W.typeName('inf') + ' ' + pct(sh.inf) + '% · ' + W.typeName('arm') + ' ' + pct(sh.arm) + '% · ' + W.typeName('art') + ' ' + pct(sh.art) + '%') + '">' +
+      '<i class="inf" style="width:' + pct(sh.inf) + '%"></i><i class="arm" style="width:' + pct(sh.arm) + '%"></i><i class="art" style="width:' + pct(sh.art) + '%"></i></span>' +
+      '<span class="dim">' + esc(W.typeName('arm')) + ' ' + pct(sh.arm) + '% · ' + esc(W.typeName('art')) + ' ' + pct(sh.art) + '%</span>' +
+      '<span class="org ' + (org < 35 ? 'neg' : org < 70 ? 'mid' : '') + '" title="Organizacja: mnożnik siły 40–100%; spada po bitwach i bez zaopatrzenia">Org. ' + org + '%</span>' +
+      (sup ? '' : '<span class="tag war" title="Brak zaopatrzenia: −4% stanu i organizacji na turę">okrążona</span>') + '</div>';
+  }
   function armyStatus(a) {
     if (a.embarked) return 'na okrętach';
     if (a.path && a.path.length) return '→ ' + provStatic(a.path[a.path.length - 1]).name;
@@ -1047,7 +1058,7 @@
       const c = countryColor(a.owner), light = R().luminance(c) > 0.62;
       const sel = S.sel && S.sel.type === 'army' && S.sel.id === a.id;
       h += '<div class="army-row' + (sel ? ' sel' : '') + '" data-army="' + esc(a.id) + '"><span class="army-chip" style="background:' + c + ';color:' + (light ? '#111' : '#fff') + '">' + fmtK(a.size) +
-        '</span><span>' + esc(countryName(a.owner)) + '</span><span class="faint" style="margin-left:auto">' + esc(armyStatus(a)) + '</span></div>';
+        '</span><span>' + esc(countryName(a.owner)) + '</span><span class="faint" style="margin-left:auto">' + esc(armyStatus(a)) + '</span></div>' + armyDetailHtml(a);
     });
     fleets.forEach((f) => {
       const sel = S.sel && S.sel.type === 'fleet' && S.sel.id === f.id;
@@ -1123,16 +1134,25 @@
     if (!has('economy.recruit')) return '';
     const max = recruitMax();
     S.recruitK = Math.min(Math.max(1, S.recruitK), max);
-    const can = call('economy.canRecruit', [me(), id, S.recruitK], { ok: true }) || { ok: true };
-    return '<div class="section"><div class="section-title">Rekrutacja</div>' +
+    const type = S.recruitType || 'inf';
+    const can = call('economy.canRecruit', [me(), id, S.recruitK, type], { ok: true }) || { ok: true };
+    const W = WT.warfare;
+    const typeSeg = W ? '<div class="seg rec-types">' + W.TYPES.map((t) => '<button type="button" class="seg-btn' + (t === type ? ' on' : '') + '" data-rtype="' + t + '" title="' + esc(unitTypeHint(t)) + '">' + esc(W.typeName(t)) + (W.COST_MULT[t] > 1 ? ' <span class="dim">×' + W.COST_MULT[t] + '</span>' : '') + '</button>').join('') + '</div>' +
+      '<div class="hint rec-type-hint">' + esc(unitTypeHint(type)) + '</div>' : '';
+    return '<div class="section"><div class="section-title">Rekrutacja</div>' + typeSeg +
       '<div class="slider-row"><input type="range" id="rec-k" min="1" max="' + max + '" value="' + S.recruitK + '"><span class="num" id="rec-k-val">' + fmtInt(S.recruitK) + ' tys.</span></div>' +
       '<div class="slider-row" style="margin-top:6px"><span class="dim">Koszt: <span class="num" id="rec-cost">' + recruitCostText(id, S.recruitK) + '</span></span>' +
       '<button class="btn btn-sm btn-ok" id="rec-go" style="margin-left:auto"' + (can.ok ? '' : ' disabled') + '>Rekrutuj</button></div>' +
       '<div class="reason" id="rec-reason">' + (can.ok ? '' : esc(can.reason || '')) + '</div></div>';
   }
+  function unitTypeHint(t) {
+    return t === 'arm' ? 'Szybkie, uderzeniowe: ×2 siły na równinach, słabe w górach, lasach i dżungli; od 35% składu armia ma +1 punkt ruchu. Koszt ×3, droższe utrzymanie.'
+      : t === 'art' ? 'Wsparcie: ×1,6 siły w każdym terenie, osłabia forty wroga, od 25% składu oblężenie trwa 2× krócej. Koszt ×2.'
+      : 'Piechota: najtańsza, równa w każdym terenie.';
+  }
   function recruitCostText(id, k) {
     if (isGod()) return '0 (God Mode)';
-    const c = call('economy.recruitCost', [me(), id, k], null);
+    const c = call('economy.recruitCost', [me(), id, k, S.recruitType || 'inf'], null);
     return c == null ? '—' : fmtNum(c, 2) + ' mld $';
   }
   function shipsSection(id, ps, pd) {
@@ -1199,11 +1219,12 @@
       S.recruitK = +s.value;
       $('rec-k-val').textContent = fmtInt(S.recruitK) + ' tys.';
       $('rec-cost').textContent = recruitCostText(id, S.recruitK);
-      const can = call('economy.canRecruit', [me(), id, S.recruitK], { ok: true }) || { ok: true };
+      const can = call('economy.canRecruit', [me(), id, S.recruitK, S.recruitType || 'inf'], { ok: true }) || { ok: true };
       $('rec-go').disabled = !can.ok; $('rec-reason').textContent = can.ok ? '' : (can.reason || '');
     });
+    document.querySelectorAll('#province-panel [data-rtype]').forEach((b) => b.addEventListener('click', () => { S.recruitType = b.dataset.rtype; renderProvincePanel(); }));
     $('rec-go').addEventListener('click', () => {
-      const a = call('economy.recruit', [me(), id, S.recruitK], null);
+      const a = call('economy.recruit', [me(), id, S.recruitK, S.recruitType || 'inf'], null);
       if (a) toast('Zrekrutowano ' + fmtInt(S.recruitK * 1000) + ' żołnierzy w: ' + provStatic(id).name, 'ok', 2500);
       else toast('Rekrutacja nieudana', 'bad');
       refreshAll();
@@ -2025,7 +2046,7 @@
     if (unit) {
       const u = unit.type === 'army' ? (G().armies || {})[unit.id] : (G().fleets || {})[unit.id];
       if (u) {
-        if (unit.type === 'army') return '<div class="tt-title">' + swatch(u.owner) + ' Armia: ' + esc(countryName(u.owner)) + '</div><div class="tt-row">Żołnierze: <b class="num">' + fmtInt(u.size) + '</b></div><div class="tt-row">' + esc(armyStatus(u)) + '</div>' +
+        if (unit.type === 'army') return '<div class="tt-title">' + swatch(u.owner) + ' Armia: ' + esc(countryName(u.owner)) + '</div><div class="tt-row">Żołnierze: <b class="num">' + fmtInt(u.size) + '</b></div><div class="tt-row">' + esc(armyStatus(u)) + '</div>' + armyTooltipExtra(u) +
           (u.owner === me() ? '<div class="tt-row faint">' + (isTouch() ? 'Przeciągnij na cel lub stuknij armię, potem cel' : 'Przeciągnij na cel lub kliknij i PPM na cel') + '</div>' : '');
         return '<div class="tt-title">' + swatch(u.owner) + ' Flota: ' + esc(countryName(u.owner)) + '</div><div class="tt-row">Eskadry: <b class="num">' + fmtInt(u.ships) + '</b></div>' +
           ((u.cargo || []).length ? '<div class="tt-row">Ładunek: <b>' + u.cargo.length + ' ' + plural(u.cargo.length, 'armia', 'armie', 'armii') + '</b></div>' : '');
@@ -2054,6 +2075,12 @@
       }
     }
     return h;
+  }
+  function armyTooltipExtra(a) {
+    const W = WT.warfare; if (!W) return '';
+    const sh = W.shares(a), pct = (v) => Math.round(v * 100);
+    return '<div class="tt-row">' + esc(W.typeName('inf')) + ' ' + pct(sh.inf) + '% · ' + esc(W.typeName('arm')) + ' ' + pct(sh.arm) + '% · ' + esc(W.typeName('art')) + ' ' + pct(sh.art) + '%</div>' +
+      '<div class="tt-row">Organizacja: <b>' + Math.round(W.orgOf(a) * 100) + '%</b>' + (W.isSupplied(a) ? '' : ' · <span style="color:#ff9c96">bez zaopatrzenia</span>') + '</div>';
   }
   function seaTooltipHtml(id) {
     const z = seaStatic(id); if (!z) return '';

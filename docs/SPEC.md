@@ -364,3 +364,10 @@ Fonty: systemowe sans + monospace dla liczb.
 - Umowa `{a, b, aProvs, bProvs, aMoney, bMoney, aTroops, bTroops}`: `checkDeal`, `balanceFor(cc, deal) → {got, gave, net}`, `aiAccepts`, `proposeDeal` (gracz → propozycja `land`), `executeDeal`, `describe`, ceny `price(id)` (30% PKB prowincji, stolica ×2), `worthGain/worthLoss`, `troopValue`.
 - Oferty AI: `aiTrade(cc)` (co 5 tur na państwo), `G.lastLandOffer` (limit 1 oferta / 5 tur dla gracza), `settings.landOffersPausedUntil` (`pauseOffers(turns)`).
 - Trasy: `military.findPathVia(army, via, dest)` (`findPathVia.failedAt`), `military.order(id, dest, size, {via})`, `naval.seaPathVia(from, via, to)`, `naval.orderFleet(id, dest, via)`. UI: `S.via`, `S.viaPick`, `S.routePref` ('land'|'sea'), `plan.routes {land, sea}`, `plan.via` (rysowane jako numerowane punkty).
+
+### Wojna: rodzaje wojsk, organizacja, zaopatrzenie (js/core/warfare.js → WT.warfare)
+- `army.mix = {arm, art}` (null = skład domyślny epoki `defaultMix()`), `army.org` (0–1, brak = 1), `army.oos` (tury bez zaopatrzenia).
+- `combatFactor(a, terrain, attacking)` w `military.sideStrength`; `fortFactor(attackers)` w `defenseBonus` (opts.fortK); `afterBattle(winners, losers)`; `movePoints(a, base)` (`military.movePointsOf`); oblężenie ×2 przy `artShare ≥ SIEGE_ART`; `blend` przy `merge`, kopia przy `split`.
+- `economy.recruitCost/canRecruit/recruit(cc, prov, k, type)` (`COST_MULT`), utrzymanie wg `upkeepSoldiers(cc)`.
+- `supplySet(cc)` (BFS od własnych kontrolowanych ziem przez prowincje kontrolowane przez kraj/sojuszników/z przejściem, cache na turę), `isSupplied(a)`, `processTurn()` (w `turn.end` po okupacjach).
+- AI: `pickUnitType`, `effStrength` (org), odpoczynek przy org < 0.35, premia celu za kleszcze i okrążone armie wroga.

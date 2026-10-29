@@ -298,13 +298,25 @@ WT.ai = (function () {
     if (site < 0) return;
     var k = Math.floor(Math.min(deficitK, c.manpower, affordableK(cc, c, site, atWar)));
     if (k < 2) return;
-    var army = E().recruit(cc, site, k);
+    var type = pickUnitType(cc, atWar);
+    if (type !== 'inf' && WT.warfare) { var kt = Math.floor(k / WT.warfare.COST_MULT[type]); if (kt >= 2) k = kt; else type = 'inf'; }
+    var army = E().recruit(cc, site, k, type);
     if (!army) return;
     ctx.soldiers[cc] = (ctx.soldiers[cc] || 0) + k * 1000;
     // Balans AI: w wojnie armia przyjmująca uzupełnienia (stoi w miejscu rekrutacji) reorganizuje się przez turę.
     // Gracz nie ma tej kary — u niego rekruci dołączają, a armia zachowuje ruch.
     if (atWar && k * 1000 >= REINFORCE_FREEZE_SHARE * army.size) army.moved = Math.max(army.moved, Mil().MOVE_POINTS);
   }
+
+  /** Rodzaj rekrutów: w wojnie więcej wojsk szybkich i wsparcia (drożsi, ale skuteczniejsi). */
+  function pickUnitType(cc, atWar) {
+    if (!WT.warfare) return 'inf';
+    var r = U.rand ? U.rand() : Math.random();
+    if (atWar) return r < 0.25 ? 'arm' : r < 0.45 ? 'art' : 'inf';
+    return r < 0.15 ? 'arm' : r < 0.3 ? 'art' : 'inf';
+  }
+  /** Efektywna siła armii (technologia × organizacja) — AI nie atakuje rozbitymi armiami. */
+  function effStrength(a) { return a.size * S.country(a.owner).tech * (WT.warfare ? 0.4 + 0.6 * WT.warfare.orgOf(a) : 1); }
 
   function affordableK(cc, c, site, atWar) {
     var perK = E().recruitCost(cc, site, 1);
@@ -623,7 +635,7 @@ WT.ai = (function () {
 
   function provinceDefense(cc, provId) {
     var def = 0;
-    Mil().hostileArmies(cc, provId).forEach(function (a) { def += a.size * S.country(a.owner).tech; });
+    Mil().hostileArmies(cc, provId).forEach(function (a) { def += effStrength(a); });
     var p = G().provinces[provId];
     return def * (1 + 0.25 * p.buildings.fort + ({ hills: 0.15, mountains: 0.35, forest: 0.1, jungle: 0.2 }[S.provStatic(provId).terrain] || 0));
   }
@@ -635,6 +647,11 @@ WT.ai = (function () {
     var owner = S.country(p.owner);
     if (owner && owner.capital === provId) v *= 3;
     if (def === 0) v *= 2;
+    // kleszcze: cel otoczony z ≥2 stron przez nasze/sojusznicze prowincje → okrążenie wroga
+    var around = S.landNeighbors(provId).filter(function (n) { var c = G().provinces[n].ctrl; return c === cc || D().friendly(cc, c); }).length;
+    if (around >= 2) v *= 1 + 0.2 * Math.min(3, around - 1);
+    // dobijanie okrążonych armii wroga (bez zaopatrzenia)
+    if (WT.warfare && Mil().hostileArmies(cc, provId).some(function (a) { return !WT.warfare.isSupplied(a); })) v *= 1.6;
     return v * U.randRange(0.8, 1.2);
   }
 
@@ -652,7 +669,9 @@ WT.ai = (function () {
   }
 
   function attackFromFrontier(army, plan) {
-    var cc = army.owner, myUnit = S.country(cc).tech, defensive = isDefensive(cc);
+    var cc = army.owner, defensive = isDefensive(cc);
+    if (WT.warfare && WT.warfare.orgOf(army) < 0.35) { consolidateIfThreatened(army); return; }   // odpoczynek po bitwie
+    var myUnit = effStrength(army) / Math.max(1, army.size);
     var cands = targetsAround(cc, army.prov).filter(function (t) { return allowedTarget(cc, t, army.prov, defensive); }).map(function (t) {
       var def = provinceDefense(cc, t);
       return { prov: t, def: def, need: Math.max(4000, def / myUnit * 1.5), value: targetValue(cc, t, def) };

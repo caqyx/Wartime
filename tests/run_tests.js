@@ -1,7 +1,7 @@
 /* Testy logiki gry w node (bez frameworków): `node tests/run_tests.js` */
 var path = require('path');
 var ROOT = path.join(__dirname, '..');
-var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'land', 'military', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
+var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'land', 'military', 'warfare', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
 CORE.forEach(function (m) { require(path.join(ROOT, 'js/core', m + '.js')); });
 var WT = global.WT;
 var mock = require('./mock_map.js');
@@ -1043,6 +1043,47 @@ test('trasa przez punkty pośrednie (armia i flota)', function () {
   var zones = [100000, 100001];
   var fr = WT.naval.orderFleet(f.id, zones[1], [zones[0]]);
   assert(fr.ok && f.path.indexOf(zones[0]) >= 0, 'rejs przez strefę: ' + fr.reason + ' ' + JSON.stringify(f.path));
+});
+
+test('wojna: rodzaje wojsk, organizacja, zaopatrzenie i okrążenie', function () {
+  freshGame();
+  clearArmies();
+  var S = WT.state, W = WT.warfare, M = WT.military;
+  // skład po scaleniu
+  var p0 = S.provincesOf('AAA')[0];
+  var x = S.createArmy('AAA', p0, 30000); x.mix = { arm: 0, art: 0 };
+  var y = S.createArmy('AAA', p0, 10000); y.mix = { arm: 1, art: 0 }; y.org = 0.5;
+  var m = M.merge(p0, 'AAA');
+  assert(Math.abs(m.mix.arm - 0.25) < 1e-6, 'pancerne 25% po scaleniu: ' + JSON.stringify(m.mix));
+  assert(Math.abs(m.org - 0.875) < 1e-6, 'organizacja ważona: ' + m.org);
+  // pancerne: lepsze na równinach niż w górach; szybsze
+  var tank = { mix: { arm: 1, art: 0 }, org: 1 }, inf = { mix: { arm: 0, art: 0 }, org: 1 };
+  assert(W.combatFactor(tank, 'plains', true) > W.combatFactor(tank, 'mountains', true) * 2, 'teren a pancerne');
+  assert(W.combatFactor(tank, 'mountains', true) < W.combatFactor(inf, 'mountains', true), 'pancerne słabe w górach');
+  eq(W.movePoints(tank, 2), 3, 'pancerne +1 ruch');
+  assert(W.combatFactor({ org: 0.2 }, 'plains', true) < W.combatFactor({ org: 1 }, 'plains', true) * 0.6, 'niska organizacja osłabia');
+  // artyleria osłabia fort
+  assert(Math.abs(W.fortFactor([{ size: 10000, mix: { arm: 0, art: 0.4 } }]) - 0.4) < 1e-9, 'artyleria osłabia fort o 60%');
+  // rekrutacja pancernych droższa
+  var c10 = WT.economy.recruitCost('AAA', p0, 10, 'inf'), a10 = WT.economy.recruitCost('AAA', p0, 10, 'arm');
+  assert(Math.abs(a10 - 3 * c10) <= 0.002 + a10 * 0.01, 'pancerne ×3: ' + a10 + ' vs ' + c10);
+  G().countries.AAA.treasury = 1e4;
+  var r = WT.economy.recruit('AAA', p0, 10, 'arm');
+  assert(r && r.mix.arm > 0.25, 'rekruci pancerni dołączają: ' + JSON.stringify(r && r.mix));
+  // okrążenie: armia AAA w prowincji BBB, do której nie prowadzi sieć zaopatrzenia
+  WT.diplomacy.startWar(['AAA'], ['BBB'], true);
+  var bbb = S.provincesOf('BBB');
+  var deep = bbb.filter(function (id) { return S.landNeighbors(id).every(function (n) { return G().provinces[n].owner !== 'AAA'; }); })[0];
+  assert(deep != null, 'prowincja w głębi BBB');
+  var lost = S.createArmy('AAA', deep, 20000);
+  eq(W.isSupplied(lost), false, 'brak zaopatrzenia w głębi wroga');
+  var front = bbb.filter(function (id) { return S.landNeighbors(id).some(function (n) { return G().provinces[n].owner === 'AAA'; }); })[0];
+  var ok = S.createArmy('AAA', front, 20000);
+  eq(W.isSupplied(ok), true, 'linia frontu zaopatrzona');
+  W.processTurn();
+  assert(lost.size < 20000 && lost.org < 1 && lost.oos === 1, 'okrążona traci stan i organizację');
+  eq(ok.size, 20000, 'zaopatrzona bez strat');
+  assert(G().log.some(function (l) { return /Okrążenie/.test(l.text); }), 'ostrzeżenie dla gracza');
 });
 
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {

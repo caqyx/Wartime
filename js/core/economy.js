@@ -135,7 +135,7 @@ WT.economy = (function () {
   function expenses(cc) {
     var scale = costScale(cc);
     var res = {
-      army: armySoldiers(cc) / 1000 * ARMY_UPKEEP_PER_K * scale,
+      army: (WT.warfare ? WT.warfare.upkeepSoldiers(cc) : armySoldiers(cc)) / 1000 * ARMY_UPKEEP_PER_K * scale,
       navy: navyShips(cc) * NAVY_UPKEEP * scale,
       buildings: buildingLevels(cc) * BUILDING_UPKEEP * techMod(cc, 'upkeep'),
       admin: countryGdp(cc) * ADMIN_RATE / WEEKS * techMod(cc, 'admin'),
@@ -240,30 +240,33 @@ WT.economy = (function () {
   // Rekrutacja i okręty
   // =====================================================================
 
-  function recruitCost(cc, provId, sizeK) {
+  /** type: 'inf' | 'arm' | 'art' (wojska szybkie ×3, wsparcie ×2 kosztu piechoty). */
+  function recruitCost(cc, provId, sizeK, type) {
     var barracks = G().provinces[provId] ? G().provinces[provId].buildings.barracks : 0;
-    return U.round(sizeK * RECRUIT_COST_PER_K * costScale(cc) * (1 - 0.1 * barracks) * techMod(cc, 'recruitCost'), 3);
+    var mult = WT.warfare && type ? (WT.warfare.COST_MULT[type] || 1) : 1;
+    return U.round(sizeK * mult * RECRUIT_COST_PER_K * costScale(cc) * (1 - 0.1 * barracks) * techMod(cc, 'recruitCost'), 3);
   }
 
-  function canRecruit(cc, provId, sizeK) {
+  function canRecruit(cc, provId, sizeK, type) {
     var p = G().provinces[provId], c = S.country(cc);
     if (!(sizeK > 0)) return { ok: false, reason: 'Podaj liczbę żołnierzy.' };
     if (!p || p.owner !== cc) return { ok: false, reason: 'Rekrutować można tylko we własnej prowincji.' };
     if (p.ctrl !== cc) return { ok: false, reason: 'Prowincja jest okupowana.' };
     if (hostileArmiesIn(cc, provId)) return { ok: false, reason: 'W prowincji stoją wrogie wojska.' };
     if (!isGodFor(cc) && c.manpower < sizeK) return { ok: false, reason: 'Za mało rezerw: dostępne ' + Math.floor(c.manpower) + ' tys.' };
-    var cost = recruitCost(cc, provId, sizeK);
+    var cost = recruitCost(cc, provId, sizeK, type);
     if (!canAfford(cc, cost)) return { ok: false, reason: 'Brak środków: potrzeba ' + U.fmtMoney(cost) + '.' };
     return { ok: true, reason: 'Koszt ' + U.fmtMoney(cost) + '.', cost: cost };
   }
 
-  function recruit(cc, provId, sizeK) {
-    var chk = canRecruit(cc, provId, sizeK);
+  function recruit(cc, provId, sizeK, type) {
+    var chk = canRecruit(cc, provId, sizeK, type);
     if (!chk.ok) return null;
     pay(cc, chk.cost);
     if (!isGodFor(cc)) S.country(cc).manpower -= sizeK;
     var army = S.createArmy(cc, provId, sizeK * 1000);
     army.moved = 99;
+    if (WT.warfare) { army.mix = WT.warfare.mixFor(type || 'inf'); army.org = 0.8; }   // świeży rekrut: niepełna organizacja
     // rekruci dołączają do stojącej armii (która zachowuje swoje punkty ruchu)
     return (WT.military && WT.military.merge(provId, cc)) || army;
   }

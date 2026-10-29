@@ -28,7 +28,7 @@ WT.turn = (function () {
       timed('fleets', function () { WT.naval.moveFleets(); WT.naval.shellAll(); });
       timed('air', function () { WT.air.processTurn(); });
       timed('armies', function () { WT.military.moveAll(); });
-      timed('occupation', function () { WT.military.resolveOccupations(); WT.military.applyAttrition(); });
+      timed('occupation', function () { WT.military.resolveOccupations(); WT.military.applyAttrition(); if (WT.warfare) WT.warfare.processTurn(); });
       timed('economy', runEconomy);
       timed('research', function () { WT.tech.processTurn(); });
       timed('diplomacy', function () { WT.diplomacy.processTurn(); });

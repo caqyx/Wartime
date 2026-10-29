@@ -1058,7 +1058,19 @@
       roundRect(b.x - 2.5, b.y - 2.5, b.w + 5, b.h + 5, (b.h + 5) / 2); ctx.fillStyle = COLORS.select; ctx.fill();
     }
     ctx.globalAlpha = dragging ? 0.55 : 1;
+    var lead = a.lead || a, cut = WT.warfare && mine && !WT.warfare.isSupplied(lead);
+    if (cut) {   // okrążona (bez zaopatrzenia): czerwony przerywany pierścień
+      roundRect(b.x - 3, b.y - 3, b.w + 6, b.h + 6, (b.h + 6) / 2);
+      ctx.setLineDash([3, 3]); ctx.strokeStyle = COLORS.war; ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+    }
     drawPill(b.x, b.y, b.w, b.h, color, mine ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.45)', mine ? 1.3 : 1);
+    if (WT.warfare && mine) {   // pasek organizacji pod pigułką
+      var org = WT.warfare.orgOf(lead);
+      if (org < 0.99) {
+        ctx.fillStyle = 'rgba(4,8,14,0.75)'; ctx.fillRect(b.x + 6, b.y + b.h + 1, b.w - 12, 3);
+        ctx.fillStyle = org < 0.35 ? COLORS.war : org < 0.7 ? '#e8b84a' : COLORS.ok; ctx.fillRect(b.x + 6, b.y + b.h + 1, (b.w - 12) * org, 3);
+      }
+    }
     var light = luminance(color) > 0.6;
     ctx.fillStyle = light ? '#0b1118' : '#ffffff';
     ctx.fillText(fmtK(a.size), b.x + b.w / 2, b.y + b.h / 2 + 0.5);

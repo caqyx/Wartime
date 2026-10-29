@@ -989,3 +989,15 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .via-chip b { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: var(--acc-400); color: #061018; font-size: 10px; }
 .via-chip button { border: 0; background: none; color: var(--text-3); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
 .via-chip button:hover { color: #ff9c96; }
+
+/* ---------- Rodzaje wojsk, organizacja, zaopatrzenie ---------- */
+.rec-types { margin-bottom: 6px; }
+.rec-types .seg-btn { font-size: var(--fs-xs); }
+.rec-type-hint { margin: 0 0 8px; }
+.army-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: -2px 0 6px 8px; font-size: var(--fs-xs); }
+.mixbar { display: inline-flex; width: 60px; height: 6px; border-radius: 3px; overflow: hidden; background: rgba(255,255,255,0.08); }
+.mixbar i { display: block; height: 100%; }
+.mixbar .inf { background: #8fa3b8; } .mixbar .arm { background: #e8b84a; } .mixbar .art { background: #e07a5f; }
+.army-detail .org { font-weight: 650; color: #9fe2bd; }
+.army-detail .org.mid { color: #e8c66a; } .army-detail .org.neg { color: #ff9c96; }
+.army-detail .tag { height: 18px; font-size: 10px; }
