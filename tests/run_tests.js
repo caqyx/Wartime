@@ -1,7 +1,7 @@
 /* Testy logiki gry w node (bez frameworków): `node tests/run_tests.js` */
 var path = require('path');
 var ROOT = path.join(__dirname, '..');
-var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'military', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
+var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'land', 'military', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
 CORE.forEach(function (m) { require(path.join(ROOT, 'js/core', m + '.js')); });
 var WT = global.WT;
 var mock = require('./mock_map.js');
@@ -947,6 +947,77 @@ test('powstanie: gra państwem nieistniejącym w epoce (cel: ziemie rdzenne)', f
   var pr = S.goalProgress();
   assert(pr.world.have >= pr.cores.total, 'licznik podboju');
   for (var i = 0; i < 3; i++) WT.turn.end();
+});
+
+test('handel prowincjami: sprzedaż, wymiana, darowizna, wojsko; pakt o przejściu', function () {
+  freshGame();
+  var L = WT.land, S = WT.state, D = WT.diplomacy;
+  setRel('AAA', 'BBB', 50);
+  var a = S.provincesOf('AAA').filter(function (id) { return id !== G().countries.AAA.capital; });
+  var b = S.provincesOf('BBB').filter(function (id) { return id !== G().countries.BBB.capital; });
+  assert(L.checkDeal({ a: 'AAA', b: 'BBB', aProvs: [G().countries.AAA.capital] }), 'stolicy nie można oddać');
+  assert(L.checkDeal({ a: 'AAA', b: 'BBB', aProvs: [b[0]] }), 'cudzej prowincji nie oddasz');
+  // sprzedaż za pieniądze: za tanio — odmowa, uczciwie — zgoda
+  G().countries.BBB.treasury = 1e4;
+  var cheap = L.proposeDeal({ a: 'AAA', b: 'BBB', bProvs: [b[0]], aMoney: 0.1 });
+  eq(cheap.accepted, false, 'za tanio');
+  var fair = L.worthLoss('BBB', b[0]) * 1.3 + 1;
+  var t0 = G().countries.BBB.treasury;
+  G().countries.AAA.treasury = 1e4;
+  var buy = L.proposeDeal({ a: 'AAA', b: 'BBB', bProvs: [b[0]], aMoney: fair });
+  assert(buy.accepted, 'kupno: ' + buy.reason);
+  eq(G().provinces[b[0]].owner, 'AAA', 'prowincja kupiona');
+  assert(Math.abs(G().countries.BBB.treasury - t0 - fair) < 1e-6, 'zapłata');
+  // darowizna: zawsze przyjęta, relacje rosną
+  var r0 = D.relation('AAA', 'BBB');
+  assert(L.proposeDeal({ a: 'AAA', b: 'BBB', aProvs: [b[0]] }).accepted, 'darowizna');
+  assert(D.relation('AAA', 'BBB') > r0, 'relacje po darowiźnie');
+  // sprzedaż za wojsko
+  var s0 = soldiers('AAA');
+  var tr = L.proposeDeal({ a: 'AAA', b: 'BBB', bProvs: [b[0]], aTroops: 0 });
+  eq(tr.accepted, false, 'bez zapłaty odmowa');
+  var sell = L.proposeDeal({ a: 'AAA', b: 'BBB', aProvs: [a[0]], bTroops: 30000 });
+  assert(sell.accepted, 'sprzedaż za wojsko: ' + sell.reason);
+  eq(G().provinces[a[0]].owner, 'BBB', 'oddana');
+  eq(soldiers('AAA'), s0 + 30000, 'żołnierze przeszli');
+  // pakt o przejściu wojsk
+  var nonAccess = S.provincesOf('CCC')[0];
+  eq(WT.military.canEnter('AAA', nonAccess), false, 'bez paktu nie wejdziesz');
+  setRel('AAA', 'CCC', 40);
+  assert(L.proposeAccess('AAA', 'CCC').accepted, 'pakt o przejściu');
+  assert(WT.military.canEnter('AAA', nonAccess), 'z paktem można wejść');
+  L.findAccess('AAA', 'CCC').until = G().turn;
+  L.processTurn();
+  eq(L.hasAccess('AAA', 'CCC'), false, 'pakt wygasł');
+  assertConsistent();
+});
+
+test('oferty ziemi od AI: limit 1 na 5 tur i wstrzymanie', function () {
+  freshGame({ player: 'BBB' });
+  var L = WT.land, S = WT.state;
+  setRel('AAA', 'BBB', 40);
+  // AAA chce odkupić swoją ziemię rdzenną od gracza
+  var core = S.coresOf('AAA').filter(function (id) { return id !== G().countries.AAA.capital && (S.provStatic(id).nb || []).some(function (n) { return S.provStatic(n) && G().provinces[n].owner === 'BBB'; }); })[0];
+  if (core == null) core = S.coresOf('AAA').filter(function (id) { return id !== G().countries.AAA.capital; })[0];
+  S.setOwner(core, 'BBB');
+  G().countries.AAA.treasury = 1e4;
+  L.aiTrade('AAA');
+  var pr = G().proposals.filter(function (p) { return p.type === 'land'; });
+  eq(pr.length, 1, 'oferta ziemi dla gracza');
+  G().proposals = [];
+  L.aiTrade('AAA');
+  eq(G().proposals.filter(function (p) { return p.type === 'land'; }).length, 0, 'limit 5 tur');
+  G().turn += 5;
+  L.pauseOffers(10);
+  L.aiTrade('AAA');
+  eq(G().proposals.length, 0, 'oferty wstrzymane');
+  G().turn += 11;
+  L.aiTrade('AAA');
+  var p2 = G().proposals.filter(function (p) { return p.type === 'land'; })[0];
+  assert(p2, 'po pauzie oferty wracają');
+  var res = WT.diplomacy.answerProposal(p2.id, true);
+  assert(res.ok, 'przyjęcie oferty: ' + res.reason);
+  eq(G().provinces[core].owner, 'AAA', 'AAA odkupiło ziemię');
 });
 
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {

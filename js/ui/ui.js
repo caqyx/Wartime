@@ -150,11 +150,14 @@
     else if (overlordOf(p) === cc) t += '<span class="tag vassal">Suzeren</span>';
     if (atWar(p, cc)) t += '<span class="tag war">Wojna</span>';
     if (allied(p, cc) && !vassalLink) t += '<span class="tag ally">Sojusz</span>';
-    if (hasPact(p, cc)) t += '<span class="tag pact">Pakt</span>';
-    if (hasTruce(p, cc)) t += '<span class="tag truce">Rozejm</span>';
+    const left = (list) => { const x = treatyWith(list, p, cc); return x ? ' · ' + Math.max(0, x.until - G().turn) + 't' : ''; };
+    if (hasPact(p, cc)) t += '<span class="tag pact" title="Pakt o nieagresji — pozostałe tury">Pakt' + left(G().pacts) + '</span>';
+    if (hasTruce(p, cc)) t += '<span class="tag truce" title="Rozejm — pozostałe tury">Rozejm' + left(G().truces) + '</span>';
+    if (WT.land && WT.land.hasAccess(p, cc)) t += '<span class="tag access" title="Pakt o przejściu wojsk — pozostałe tury">Przejście' + left(G().access) + '</span>';
     if (call('diplomacy.hasTrade', [p, cc], false)) t += '<span class="tag trade">Handel</span>';
     return t;
   }
+  function treatyWith(list, a, b) { return (list || []).find((t) => (t.a === a && t.b === b) || (t.a === b && t.b === a)) || null; }
   // Wasale (WT.vassal)
   function overlordOf(cc) { return WT.vassal && cc ? WT.vassal.overlordOf(cc) : null; }
   function relClass(v) { return v > 15 ? 'pos' : v < -15 ? 'neg' : 'dim'; }
@@ -1233,7 +1236,10 @@
     const panel = $('diplo-panel');
     const focused = document.activeElement && document.activeElement.id === 'dip-search';
     let html = '<div class="panel-head"><h2>Dyplomacja</h2><button class="close" data-act="close" title="Zamknij (Esc)" aria-label="Zamknij">' + icon('x') + '</button></div><div class="panel-body">';
-    html += '<div class="section dip-settings"><label class="check"><input type="checkbox" id="dip-nopacts"' + (settingsOf().autoRejectPacts ? ' checked' : '') + '> <span>Automatycznie odrzucaj pakty o nieagresji</span></label></div>';
+    const pausedUntil = settingsOf().landOffersPausedUntil, paused = pausedUntil != null && pausedUntil > G().turn;
+    html += '<div class="section dip-settings"><label class="check"><input type="checkbox" id="dip-nopacts"' + (settingsOf().autoRejectPacts ? ' checked' : '') + '> <span>Automatycznie odrzucaj pakty o nieagresji</span></label>' +
+      (WT.land ? '<div class="land-pause"><span>Oferty ziemi od AI<small>' + (paused ? (pausedUntil >= 1e9 ? 'wstrzymane do odwołania' : 'wstrzymane jeszcze ' + (pausedUntil - G().turn) + ' tur') : 'maks. 1 oferta na ' + WT.land.OFFER_EVERY + ' tur') + '</small></span>' +
+        '<select id="dip-landpause"><option value="0"' + (paused ? '' : ' selected') + '>Przyjmuj</option><option value="10">Wstrzymaj 10 tur</option><option value="25">Wstrzymaj 25 tur</option><option value="52">Wstrzymaj 52 tury</option><option value="inf"' + (paused && pausedUntil >= 1e9 ? ' selected' : '') + '>Wstrzymaj do odwołania</option></select></div>' : '') + '</div>';
     if (WT.vassal && !overlordOf(me())) html += '<div class="section"><button class="btn" id="dip-release" style="width:100%;justify-content:center">' + icon('crown') + ' Utwórz państwo-wasala (odtwórz upadłe)</button></div>';
     html += '<div class="section"><input type="search" id="dip-search" placeholder="Szukaj państwa…" value="' + esc(S.diploQuery) + '" style="width:100%"></div>';
     html += '<div class="section"><div class="country-list" id="dip-list" style="max-height:200px">' + diploListHtml() + '</div></div>';
@@ -1276,6 +1282,7 @@
       '<span class="k">Stabilność</span><span class="v">' + Math.round(c.stability || 0) + '%</span>' +
       (overlordOf(cc) ? '<span class="k">Suzeren</span><span class="v txt">' + swatch(overlordOf(cc)) + esc(countryName(overlordOf(cc))) + '</span>' : '') + '</div>';
     if (war && WT.vassal) h += warPointsLineHtml(cc);
+    h += treatyTimesHtml(cc);
     const vassalLink = overlordOf(cc) === p || overlordOf(p) === cc;
     const impCost = has('diplomacy.improveRelationsCost') ? call('diplomacy.improveRelationsCost', [p], 1) : 1 + 0.001 * (staticCountry(p).gdp || 0);
     h += '<div class="action-grid" style="margin-top:10px">';
@@ -1288,10 +1295,99 @@
     }
     h += call('diplomacy.hasTrade', [p, cc], false) ? '<button class="btn" data-dip="trade-cancel">Zerwij handel</button>'
       : '<button class="btn" data-dip="trade"' + (war ? ' disabled' : '') + ' title="+3% dochodu dla obu stron; wymaga relacji ≥ 15">Umowa handlowa</button>';
+    if (WT.land && !war) {
+      h += WT.land.hasAccess(p, cc) ? '<button class="btn" data-dip="access-cancel">Zerwij przejście wojsk</button>'
+        : vassalLink || ally ? '' : '<button class="btn" data-dip="access" title="Obie strony mogą wprowadzać armie na tereny drugiej przez ' + WT.land.ACCESS_TURNS + ' tur; wymaga relacji ≥ 30">Pakt o przejściu wojsk</button>';
+      h += '<button class="btn btn-primary" data-dip="land">' + icon('pin') + ' Handel prowincjami</button>';
+    }
     h += '<button class="btn" data-dip="improve" title="Koszt ok. ' + fmtNum(impCost, 1) + ' mld $">Popraw relacje</button>';
     h += '<button class="btn" data-dip="insult">Obraź</button>';
     h += '<button class="btn btn-ghost" data-dip="show">Pokaż na mapie</button>';
     return h + '</div>' + countryWarsHtml(cc) + reparationsHtml(cc) + vassalSectionHtml(cc) + overlordSectionHtml(cc) + aidSectionHtml(cc) + '</div>';
+  }
+
+  /** Pozostały czas paktów i rozejmu z `cc`. */
+  function treatyTimesHtml(cc) {
+    const p = me(), rows = [];
+    const row = (label, t) => { if (t) rows.push('<span class="k">' + label + '</span><span class="v">jeszcze ' + Math.max(0, t.until - G().turn) + ' ' + plural(Math.max(0, t.until - G().turn), 'tura', 'tury', 'tur') + ' <span class="dim">(do tury ' + t.until + ')</span></span>'); };
+    row('Pakt o nieagresji', treatyWith(G().pacts, p, cc));
+    row('Rozejm', treatyWith(G().truces, p, cc));
+    row('Przejście wojsk', treatyWith(G().access, p, cc));
+    return rows.length ? '<div class="kv treaty-times">' + rows.join('') + '</div>' : '';
+  }
+
+  // ===========================================================================
+  // Handel prowincjami: daj, sprzedaj (pieniądze / wojsko), wymień
+  // ===========================================================================
+  function openLandDeal(cc) {
+    const L = WT.land, p = me(); if (!L) return;
+    const T = { a: p, b: cc, aProvs: [], bProvs: [], aMoney: 0, bMoney: 0, aTroops: 0, bTroops: 0 };
+    const nbOf = (owner, other) => (id) => (provStatic(id).nb || []).some((n) => G().provinces[n] && G().provinces[n].owner === other);
+    const listFor = (owner, other) => provincesOf(owner).filter((id) => provDyn(id).ctrl === owner && liveCountry(owner).capital !== id)
+      .sort((x, y) => (nbOf(owner, other)(y) - nbOf(owner, other)(x)) || provStatic(x).name.localeCompare(provStatic(y).name, 'pl'));
+    const mine = listFor(p, cc), theirs = listFor(cc, p), myCores = new Set(call('state.coresOf', [p], []) || []);
+    const sync = () => { R().view.multi = T.aProvs.concat(T.bProvs); R().requestDraw(); };
+    const provList = (ids, key, owner) => ids.length ? ids.map((id) => '<label class="conf-item"><input type="checkbox" data-' + key + '="' + id + '"' + (T[key].indexOf(id) >= 0 ? ' checked' : '') + '><span>' + esc(provStatic(id).name) +
+      (owner === cc && myCores.has(id) ? ' <span class="tag rebel">twoja rdzenna</span>' : '') + '</span><span class="num">' + fmtNum(L.price(id), 1) + ' mld</span></label>').join('') : '<div class="hint">Brak prowincji do przekazania (stolica nie podlega handlowi).</div>';
+    const render = (el) => {
+      const err = L.checkDeal(T), v = err ? null : L.aiAccepts(cc, T), bal = L.balanceFor(cc, T);
+      let h = '<div class="deal-presets"><button class="btn btn-sm" data-preset="gift">Daj za darmo</button><button class="btn btn-sm" data-preset="money">Sprzedaj za uczciwą cenę</button>' +
+        '<button class="btn btn-sm" data-preset="troops">Sprzedaj za wojsko</button><button class="btn btn-sm" data-preset="buy">Kup za uczciwą cenę</button><button class="btn btn-sm btn-ghost" data-preset="clear">Wyczyść</button></div>';
+      h += '<div class="conf-cols"><div class="conf-col"><div class="section-title">Oddajesz (' + esc(countryName(p)) + ')</div><div class="conf-list deal-list">' + provList(mine, 'aProvs', p) + '</div>' +
+        dealInputs('a', T, liveCountry(p).treasury, L.idleTroops(p)) + '</div>' +
+        '<div class="conf-col"><div class="section-title">Dostajesz (' + esc(countryName(cc)) + ')</div><div class="conf-list deal-list">' + provList(theirs, 'bProvs', cc) + '</div>' +
+        dealInputs('b', T, liveCountry(cc).treasury, L.idleTroops(cc)) + '</div></div>';
+      h += '<div class="deal-verdict ' + (err ? '' : v.ok ? 'ok' : 'bad') + '">' + (err ? esc(err) : (v.ok ? icon('check') + ' ' + esc(countryName(cc)) + ' przyjmie tę umowę' : esc(v.reason))) +
+        '<span class="dim"> · wycena ' + esc(countryName(cc)) + ': dostaje ' + fmtBn(bal.got) + ', oddaje ' + fmtBn(bal.gave) + '</span></div>';
+      el.querySelector('#deal-body').innerHTML = h;
+      const go = el.querySelector('#deal-go'); if (go) go.disabled = !!err;
+      el.querySelectorAll('[data-aProvs],[data-bProvs]').forEach((b) => b.addEventListener('change', () => {
+        const key = b.hasAttribute('data-aProvs') ? 'aProvs' : 'bProvs', id = +b.getAttribute('data-' + key);
+        T[key] = b.checked ? T[key].concat([id]) : T[key].filter((x) => x !== id);
+        sync(); render(el);
+      }));
+      el.querySelectorAll('[data-deal]').forEach((inp) => inp.addEventListener('change', () => {
+        const k = inp.dataset.deal, val = Math.max(0, +inp.value || 0);
+        T[k] = /Troops/.test(k) ? Math.round(val * 1000) : val;
+        render(el);
+      }));
+      el.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => { dealPreset(T, b.dataset.preset, cc); sync(); render(el); }));
+    };
+    openModal({ title: icon('pin') + ' Handel prowincjami: ' + esc(countryName(cc)), wide: true, body: '<div id="deal-body"></div>',
+      buttons: [{ label: 'Anuluj' }, { label: 'Zaproponuj umowę', cls: 'btn-primary', close: false, onClick: (close) => {
+        const res = L.proposeDeal(T);
+        resultToast(res, 'Umowa zawarta');
+        if (res && res.accepted) { close(); R().invalidate(); refreshAll(); }
+      } }],
+      onOpen: (el) => { const b = el.querySelectorAll('.modal-foot .btn'); b[b.length - 1].id = 'deal-go'; render(el); },
+      onClose: () => { R().view.multi = S.multi ? S.multi.slice() : null; R().requestDraw(); } });
+  }
+  function dealInputs(side, T, treasury, troops) {
+    const god = side === 'a' && isGod();
+    return '<div class="deal-inputs"><label>Pieniądze (mld $)<input type="number" min="0" step="0.5" data-deal="' + side + 'Money" value="' + T[side + 'Money'] + '"><small>' + (god ? 'God Mode' : 'skarbiec ' + fmtBn(treasury || 0)) + '</small></label>' +
+      '<label>Wojsko (tys.)<input type="number" min="0" step="1" data-deal="' + side + 'Troops" value="' + Math.round(T[side + 'Troops'] / 1000) + '"><small>stojące ' + fmtK(troops) + '</small></label></div>';
+  }
+  /** Szybkie ustawienia: cena liczona tak, by AI przyjęło (wg jego wyceny + 5%). */
+  function dealPreset(T, kind, cc) {
+    const L = WT.land;
+    const need = () => { const bal = L.balanceFor(cc, Object.assign({}, T, { aMoney: 0, bMoney: 0, aTroops: 0, bTroops: 0 })); return bal; };
+    if (kind === 'clear') { Object.assign(T, { aProvs: [], bProvs: [], aMoney: 0, bMoney: 0, aTroops: 0, bTroops: 0 }); return; }
+    T.aMoney = T.bMoney = T.aTroops = T.bTroops = 0;
+    if (kind === 'gift') { T.bProvs = []; if (!T.aProvs.length) toast('Zaznacz po lewej prowincje, które oddajesz', '', 2200); return; }
+    if (kind === 'buy') {
+      T.aProvs = [];
+      if (!T.bProvs.length) { toast('Zaznacz po prawej prowincje, które chcesz kupić', '', 2200); return; }
+      T.aMoney = Math.ceil(need().gave * 1.12 * 2) / 2;
+      return;
+    }
+    T.bProvs = [];
+    if (!T.aProvs.length) { toast('Zaznacz po lewej prowincje na sprzedaż', '', 2200); return; }
+    const worth = need().got * 0.95;   // ile warte są dla kupującego (zostawia mu margines)
+    if (kind === 'money') T.bMoney = Math.max(0.5, Math.floor(Math.min(worth, (liveCountry(cc).treasury || 0) * 0.9) * 2) / 2);
+    if (kind === 'troops') {
+      const per = L.troopValue(cc, 1000) || 1;
+      T.bTroops = Math.max(WT.military.MIN_ARMY, Math.min(Math.floor(worth / per) * 1000, Math.floor(L.idleTroops(cc) * 0.5 / 1000) * 1000));
+    }
   }
 
   // ===========================================================================
@@ -1453,6 +1549,13 @@
     bindAidSection(S.diploCC);
     bindVassalSection(S.diploCC);
     const rb = $('dip-release'); if (rb) rb.addEventListener('click', () => { closeDiplomacy(); startRelease(); });
+    const lp = $('dip-landpause');
+    if (lp) lp.addEventListener('change', () => {
+      const v = lp.value === 'inf' ? Infinity : +lp.value;
+      WT.land.pauseOffers(v);
+      toast(v ? (isFinite(v) ? 'Oferty ziemi wstrzymane na ' + v + ' tur' : 'Oferty ziemi wstrzymane do odwołania') : 'Oferty ziemi od AI znów będą przychodzić (maks. 1 na ' + WT.land.OFFER_EVERY + ' tur)', '', 2400);
+      renderDiplomacy();
+    });
     $('dip-nopacts').addEventListener('change', (e) => { settingsOf().autoRejectPacts = e.target.checked; toast(e.target.checked ? 'Pakty o nieagresji będą odrzucane automatycznie' : 'Propozycje paktów znów trafią do ciebie', '', 2200); });
   }
   function diploAction(act, cc) {
@@ -1468,6 +1571,9 @@
       case 'peace-white': resultToast(call('diplomacy.proposePeace', [p, cc, 'white'], null), 'Zawarto biały pokój'); break;
       case 'peace-annex': resultToast(call('diplomacy.proposePeace', [p, cc, 'annex'], null), 'Pokój: aneksja okupowanych prowincji'); break;
       case 'conference': openConference(cc); return;
+      case 'land': openLandDeal(cc); return;
+      case 'access': resultToast(WT.land.proposeAccess(p, cc), 'Pakt o przejściu wojsk zawarty'); break;
+      case 'access-cancel': resultToast(WT.land.cancelAccess(p, cc)); break;
       case 'alliance': resultToast(call('diplomacy.proposeAlliance', [p, cc], null), 'Sojusz zawarty'); break;
       case 'break': resultToast(call('diplomacy.breakAlliance', [p, cc], null), 'Sojusz zerwany'); break;
       case 'pact': resultToast(call('diplomacy.proposePact', [p, cc], null), 'Pakt podpisany'); break;
@@ -1812,7 +1918,7 @@
   // Propozycje AI → gracz
   // ===========================================================================
   const PROPOSAL_TITLES = { peace: 'Propozycja pokoju', alliance: 'Propozycja sojuszu', pact: 'Propozycja paktu o nieagresji',
-    trade: 'Propozycja umowy handlowej', aidRequest: 'Prośba o pomoc', callToArms: 'Wezwanie do wojny', treaty: 'Żądania pokojowe' };
+    trade: 'Propozycja umowy handlowej', aidRequest: 'Prośba o pomoc', callToArms: 'Wezwanie do wojny', treaty: 'Żądania pokojowe', land: 'Umowa terytorialna', access: 'Pakt o przejściu wojsk' };
   function proposalText(pr) {
     const from = '<b>' + esc(countryName(pr.from)) + '</b>';
     let t;
@@ -1830,6 +1936,11 @@
         if (terms.text) t += '<br><span class="dim">' + esc(terms.text) + '</span>';
         if (terms.war || terms.vs || terms.against) t += '<br><span class="dim">Dotyczy: ' + esc(countryName(terms.war || terms.vs || terms.against)) + '</span>';
       }
+    }
+    if (pr.type === 'land' && WT.land) {
+      const bal = WT.land.balanceFor(me(), pr.terms);
+      t += '<br><span class="dim">Wycena dla ciebie: dostajesz ' + fmtBn(bal.got) + ', oddajesz ' + fmtBn(bal.gave) + ' (' + (bal.net >= 0 ? '<span class="pos">+' : '<span class="neg">') + fmtNum(bal.net, 1) + ' mld</span>).</span>';
+      R().view.multi = (pr.terms.aProvs || []).concat(pr.terms.bProvs || []); R().requestDraw();
     }
     if (pr.type === 'treaty') t += '<br><span class="reason">' + (pr.terms.vassal ? 'Przyjęcie: zostaniesz wasalem — płacisz trybut, walczysz w wojnach suzerena, nie wypowiadasz wojen. Później możesz ogłosić niepodległość (wojna). ' : '') + 'Odrzucenie: wojna trwa dalej.</span>';
     if (pr.type === 'aidRequest' && !isGod()) {
@@ -1856,7 +1967,7 @@
     openModal({
       title: esc(PROPOSAL_TITLES[pr.type] || 'Propozycja dyplomatyczna'), body: '<p>' + proposalText(pr) + '</p>', dismissable: false,
       buttons: [{ label: 'Odrzuć', cls: 'btn-danger', onClick: () => answer(false) }, { label: 'Przyjmij', cls: 'btn-ok', onClick: () => answer(true) }],
-      onClose: () => { S.proposalOpen = false; setTimeout(checkProposals, 150); }
+      onClose: () => { S.proposalOpen = false; if (pr.type === 'land') { R().view.multi = S.multi ? S.multi.slice() : null; R().requestDraw(); } setTimeout(checkProposals, 150); }
     });
   }
   UI.checkProposals = checkProposals;

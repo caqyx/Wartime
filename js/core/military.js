@@ -28,6 +28,7 @@ WT.military = (function () {
     var p = G().provinces[provId], d = D();
     if (p.owner === cc || p.ctrl === cc) return true;
     if (d.friendly(cc, p.owner) || d.friendly(cc, p.ctrl)) return true;
+    if (WT.land && WT.land.hasAccess(cc, p.owner) && p.ctrl === p.owner) return true;   // pakt o przejściu wojsk
     return d.atWar(cc, p.owner) || d.atWar(cc, p.ctrl);
   }
   /** Prowincja kontrolowana przez wroga (wejście kończy ruch, kosztuje 2). */

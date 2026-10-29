@@ -337,6 +337,7 @@ WT.ai = (function () {
     if (staggered(i, WAR_CHECK_EVERY)) considerWar(cc, ctx);
     if (staggered(i, 10)) maybeOfferPactToPlayer(cc, ctx);
     if (staggered(i, 10)) considerIndependence(cc);
+    if (staggered(i, 5) && WT.land) WT.land.aiTrade(cc);
   }
 
   /** Wasal AI silniejszy od suzerena, w złych relacjach i bez innych wojen, może ogłosić niepodległość. */

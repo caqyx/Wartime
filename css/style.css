@@ -960,3 +960,21 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .goal-chip.hidden { display: none; }
 .release-row { display: flex; gap: 6px; }
 .release-row select { flex: 1; min-width: 0; height: 32px; }
+
+/* ---------- Handel prowincjami, pakt o przejściu ---------- */
+.tag.access { background: oklch(75% 0.12 160 / 0.15); color: oklch(85% 0.10 160); border-color: oklch(75% 0.12 160 / 0.4); }
+.treaty-times { margin-top: 8px; }
+.land-pause { display: flex; align-items: center; gap: var(--s-3); padding: 6px var(--s-2); }
+.land-pause > span { flex: 1; color: var(--text-1); }
+.land-pause small { display: block; font-size: var(--fs-xs); color: var(--text-3); }
+.land-pause select { height: 30px; }
+.deal-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.deal-list { max-height: 240px; }
+.deal-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.deal-inputs label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; }
+.deal-inputs input { height: 32px; width: 100%; }
+.deal-inputs small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.deal-verdict { margin-top: 12px; padding: 8px 12px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--text-2); background: rgba(3, 6, 12, 0.3); border: 1px solid var(--stroke-1); }
+.deal-verdict.ok { color: #9fe2bd; border-color: rgba(62, 194, 127, 0.4); background: rgba(62, 194, 127, 0.08); }
+.deal-verdict.bad { color: #ffb4ae; border-color: rgba(229, 72, 77, 0.4); background: rgba(229, 72, 77, 0.08); }
+.deal-verdict .ico { width: 14px; height: 14px; vertical-align: -2px; }

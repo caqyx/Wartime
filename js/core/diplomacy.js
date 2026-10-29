@@ -684,6 +684,8 @@ WT.diplomacy = (function () {
     pact: function (p) { return name(p.from) + ' proponuje pakt o nieagresji.'; },
     callToArms: function (p) { return name(p.from) + ' wzywa do wojny przeciw ' + name(p.terms.enemy) + ' (sojusz obronny).'; },
     trade: function (p) { return name(p.from) + ' proponuje umowę handlową (+3% dochodu dla obu stron).'; },
+    land: function (p) { return name(p.from) + ' proponuje umowę terytorialną: ' + (WT.land ? WT.land.describe(p.terms) : '') + '.'; },
+    access: function (p) { return name(p.from) + ' proponuje pakt o przejściu wojsk (obie strony mogą wprowadzać armie na tereny drugiej przez ' + (WT.land ? WT.land.ACCESS_TURNS : 40) + ' tur).'; },
     treaty: function (p) { return name(p.from) + ' żąda traktatu pokojowego: ' + (WT.vassal ? WT.vassal.describeTerms(p.terms) : '') + '.'; },
     aidRequest: function (p) { return name(p.from) + ' przegrywa wojnę z: ' + name(p.terms.enemy) + ' i prosi o ' + U.fmtMoney(p.terms.amount) + ' wsparcia (lepsze relacje).'; }
   };
@@ -716,6 +718,18 @@ WT.diplomacy = (function () {
       if (!atWar(p.from, p.to)) return { ok: false, reason: 'Wojna już się zakończyła.' };
       concludePeace(p.from, p.to, p.terms.kind, p.terms.winner);
       return { ok: true, reason: 'Pokój zawarty.' };
+    }
+    if (p.type === 'land' && WT.land) {
+      var lerr = WT.land.checkDeal(p.terms);
+      if (lerr) return { ok: false, reason: 'Umowa nieaktualna: ' + lerr };
+      WT.land.executeDeal(p.terms);
+      return { ok: true, reason: 'Umowa terytorialna zawarta: ' + WT.land.describe(p.terms) + '.' };
+    }
+    if (p.type === 'access' && WT.land) {
+      var aerr = WT.land.checkAccess(p.from, p.to);
+      if (aerr) return { ok: false, reason: aerr };
+      WT.land.makeAccess(p.from, p.to);
+      return { ok: true, reason: 'Pakt o przejściu wojsk zawarty (' + WT.land.ACCESS_TURNS + ' tur).' };
     }
     if (p.type === 'treaty') {
       if (!atWar(p.from, p.to) || !V()) return { ok: false, reason: 'Wojna już się zakończyła.' };
@@ -762,6 +776,7 @@ WT.diplomacy = (function () {
     G().proposals = G().proposals.filter(function (p) { return t - p.turn < PROPOSAL_TTL; });
     G().wars.forEach(warScore);
     if (V()) V().processTurn();
+    if (WT.land) WT.land.processTurn();
     S.checkGoal();
     pruneTrades();
     refreshCountries();
