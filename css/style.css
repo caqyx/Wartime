@@ -978,3 +978,14 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .deal-verdict.ok { color: #9fe2bd; border-color: rgba(62, 194, 127, 0.4); background: rgba(62, 194, 127, 0.08); }
 .deal-verdict.bad { color: #ffb4ae; border-color: rgba(229, 72, 77, 0.4); background: rgba(229, 72, 77, 0.08); }
 .deal-verdict .ico { width: 14px; height: 14px; vertical-align: -2px; }
+
+/* ---------- Wybór trasy i punkty pośrednie (pasek rozkazu) ---------- */
+.ob-route-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.ob-seg { flex: 0 1 auto; }
+.ob-seg .seg-btn { display: inline-flex; align-items: center; gap: 5px; padding: 0 10px; }
+.ob-seg .seg-btn .ico { width: 13px; height: 13px; }
+.ob-via { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: var(--fs-sm); }
+.via-chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 4px 0 6px; border-radius: var(--r-pill); background: var(--acc-tint); border: 1px solid oklch(84% 0.14 205 / 0.35); color: var(--text-1); }
+.via-chip b { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: var(--acc-400); color: #061018; font-size: 10px; }
+.via-chip button { border: 0; background: none; color: var(--text-3); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 4px; }
+.via-chip button:hover { color: #ff9c96; }

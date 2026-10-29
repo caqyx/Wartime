@@ -1020,6 +1020,31 @@ test('oferty ziemi od AI: limit 1 na 5 tur i wstrzymanie', function () {
   eq(G().provinces[core].owner, 'AAA', 'AAA odkupiło ziemię');
 });
 
+test('trasa przez punkty pośrednie (armia i flota)', function () {
+  freshGame();
+  clearArmies();
+  var S = WT.state, M = WT.military;
+  var own = S.provincesOf('AAA'), a = S.createArmy('AAA', own[0], 20000);
+  var dest = own.filter(function (id) { return M.findPath(a, id) && M.findPath(a, id).length >= 2; })[0];
+  assert(dest != null, 'cel o trasie ≥ 2');
+  var direct = M.findPath(a, dest);
+  var via = own.filter(function (id) { return id !== dest && id !== a.prov && direct.indexOf(id) < 0; })[0];
+  assert(via != null, 'punkt poza najkrótszą trasą');
+  var path = M.findPathVia(a, [via], dest);
+  assert(path && path.indexOf(via) >= 0 && path[path.length - 1] === dest, 'trasa przechodzi przez punkt: ' + JSON.stringify(path));
+  var r = M.order(a.id, dest, null, { via: [via] });
+  assert(r.ok, 'rozkaz z punktem: ' + r.reason);
+  assert(G().armies[r.armyId].path.indexOf(via) >= 0, 'zapisana trasa przez punkt');
+  var bad = M.order(a.id, dest, null, { via: [S.provincesOf('ISL')[0]] });
+  eq(bad.ok, false, 'niedostępny punkt pośredni');
+  // flota przez strefę morską
+  var port = [4, 9, 14, 25, 27].filter(function (id) { return WT.naval.isNode(id); })[0];
+  var f = S.createFleet('AAA', port, 2);
+  var zones = [100000, 100001];
+  var fr = WT.naval.orderFleet(f.id, zones[1], [zones[0]]);
+  assert(fr.ok && f.path.indexOf(zones[0]) >= 0, 'rejs przez strefę: ' + fr.reason + ' ' + JSON.stringify(f.path));
+});
+
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {
   freshGame({ player: 'AAA', god: true });
   var c = G().countries.AAA, t0 = c.treasury;

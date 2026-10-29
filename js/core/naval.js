@@ -58,6 +58,18 @@ WT.naval = (function () {
     return path.reverse();
   }
 
+  /** Trasa morska przez punkty pośrednie (porty lub strefy), w podanej kolejności. */
+  function seaPathVia(fromProv, via, toProv) {
+    var pts = (via || []).filter(function (v) { return v !== toProv; }).concat([toProv]), cur = fromProv, path = [];
+    for (var i = 0; i < pts.length; i++) {
+      if (pts[i] === cur) continue;
+      var seg = seaPath(cur, pts[i]);
+      if (!seg) return null;
+      path = path.concat(seg); cur = pts[i];
+    }
+    return path;
+  }
+
   function fleetMoves(cc) { return FLEET_MOVES + (WT.tech && cc ? WT.tech.add(cc, 'fleetSpeed') : 0); }
   function seaTurns(path, cc) { return Math.ceil(path.length / fleetMoves(cc)); }
 
@@ -65,11 +77,12 @@ WT.naval = (function () {
   // Rozkazy flot
   // =====================================================================
 
-  function orderFleet(fleetId, destProv) {
+  function orderFleet(fleetId, destProv, via) {
     var f = G().fleets[fleetId];
     if (!f) return { ok: false, reason: 'Nie ma takiej floty.' };
     if (!isNode(destProv)) return { ok: false, reason: 'Cel nie jest morzem ani prowincją nadmorską.' };
-    var path = seaPath(f.prov, destProv);
+    if (via && via.some(function (v) { return !isNode(v); })) return { ok: false, reason: 'Punkty pośrednie floty muszą być strefami morskimi lub portami.' };
+    var path = via && via.length ? seaPathVia(f.prov, via, destProv) : seaPath(f.prov, destProv);
     if (!path) return { ok: false, reason: 'Brak drogi morskiej do celu.' };
     f.path = path;
     f.landAt = null;
@@ -352,7 +365,7 @@ WT.naval = (function () {
     FLEET_MOVES: FLEET_MOVES, SHIP_CAPACITY: SHIP_CAPACITY, GUNSHIP_COST: GUNSHIP_COST, SHELL_RANGE_KM: SHELL_RANGE_KM,
     isNode: isNode, shellRangeKm: shellRangeKm, distToProvince: distToProvince, checkShell: checkShell, orderShell: orderShell, cancelShell: cancelShell,
     fleetMoves: fleetMoves, gunshipCost: gunshipCost, canBuyGunships: canBuyGunships, buyGunships: buyGunships, shellAll: shellAll, shellProvince: shellProvince,
-    isPort: isPort, seaPath: seaPath, seaTurns: seaTurns, orderFleet: orderFleet,
+    isPort: isPort, seaPath: seaPath, seaPathVia: seaPathVia, seaTurns: seaTurns, orderFleet: orderFleet,
     freeCapacity: freeCapacity, cargoSize: cargoSize, planInvasion: planInvasion, unload: unload,
     moveFleets: moveFleets, navalBattle: navalBattle
   };

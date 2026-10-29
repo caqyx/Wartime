@@ -87,6 +87,23 @@ WT.military = (function () {
     return findPathFor(army.owner, army.prov, destProv);
   }
 
+  /**
+   * Trasa przez punkty pośrednie (w podanej kolejności): sklejone odcinki A*. null, gdy któryś odcinek nie istnieje
+   * (pole `failedAt` funkcji = indeks punktu, do którego nie ma drogi; via.length = cel).
+   */
+  function findPathVia(army, via, destProv) {
+    if (!army || army.embarked) return null;
+    var pts = (via || []).filter(function (v) { return v !== destProv; }).concat([destProv]), cur = army.prov, path = [];
+    findPathVia.failedAt = -1;
+    for (var i = 0; i < pts.length; i++) {
+      if (pts[i] === cur) continue;
+      var seg = findPathFor(army.owner, cur, pts[i]);
+      if (!seg) { findPathVia.failedAt = i; return null; }
+      path = path.concat(seg); cur = pts[i];
+    }
+    return path;
+  }
+
   /** Szacowana liczba tur przejścia trasą (dla UI). */
   function estimateTurns(cc, path) {
     var turns = path.length ? 1 : 0, pts = 0;
@@ -103,13 +120,15 @@ WT.military = (function () {
   // Rozkazy
   // =====================================================================
 
-  function order(armyId, destProv, sizeSoldiers) {
+  /** opts.via — prowincje, przez które armia musi przejść (w tej kolejności). */
+  function order(armyId, destProv, sizeSoldiers, opts) {
+    var via = opts && opts.via && opts.via.length ? opts.via : null;
     var army = G().armies[armyId];
     if (!army) return { ok: false, reason: 'Nie ma takiej armii.' };
     if (army.embarked) return { ok: false, reason: 'Armia jest na okrętach.' };
     if (destProv === army.prov) { army.path = []; return { ok: true, reason: 'Armia pozostaje na miejscu.', armyId: armyId }; }
-    var path = findPath(army, destProv);
-    if (!path) return { ok: false, reason: noPathReason(army, destProv) };
+    var path = via ? findPathVia(army, via, destProv) : findPath(army, destProv);
+    if (!path) return { ok: false, reason: via && findPathVia.failedAt < via.length ? 'Brak drogi do punktu pośredniego: ' + S.provStatic(via[findPathVia.failedAt]).name + '.' : noPathReason(army, destProv) };
     var mover = splitForOrder(army, sizeSoldiers);
     if (!mover) return { ok: false, reason: 'Wyślij co najmniej ' + MIN_ARMY + ' żołnierzy.' };
     mover.path = path;
@@ -484,7 +503,7 @@ WT.military = (function () {
   return {
     MOVE_POINTS: MOVE_POINTS,
     canEnter: canEnter, isHostileTerritory: isHostileTerritory, moveCost: moveCost, hostileArmies: hostileArmies,
-    findPath: findPath, findPathFor: findPathFor, estimateTurns: estimateTurns,
+    findPath: findPath, findPathVia: findPathVia, findPathFor: findPathFor, estimateTurns: estimateTurns,
     order: order, split: split, splitForOrder: splitForOrder, cancel: cancel, merge: merge, mergeIfIdle: mergeIfIdle, mergeAll: mergeAll, disband: disband, MIN_ARMY: MIN_ARMY, MIN_REMAINDER: MIN_REMAINDER,
     power: power, invalidatePower: invalidatePower, battle: battle, retreat: retreat, engageAt: engageAt,
     moveAll: moveAll, stepArmy: stepArmy, resetMoves: resetMoves, applyAttrition: applyAttrition, engagedFraction: engagedFraction,

@@ -783,30 +783,43 @@
     const fl = fleetsIn(army.prov).filter((f) => f.owner === army.owner);
     return { fleets: fl.length, cap: fl.reduce((m, f) => Math.max(m, fleetFree(f)), 0) };
   }
+  // Trasa armii: lądowa (także przez punkty pośrednie S.via) albo desant morski; gdy obie możliwe — wybór S.routePref.
   function planArmy(a, target) {
-    const from = a.prov;
-    const path = call('military.findPath', [a, target], null);
+    const from = a.prov, via = S.via || [];
+    const path = via.length ? call('military.findPathVia', [a, via, target], null) : call('military.findPath', [a, target], null);
+    let land = null, sea = null;
     if (path && path.length) {
       const turns = estimateLandTurns(a, path);
-      return { ok: true, kind: 'land', target, path, turns, points: R().landPoints(from, path), label: turnsText(turns) };
+      land = { ok: true, kind: 'land', target, path, turns, points: R().landPoints(from, path), label: turnsText(turns) + (via.length ? ' · przez ' + via.length : ''), via: via.slice() };
     }
     const ps = provStatic(target), pf = provStatic(from);
-    if (ps.coastal && pf.coastal) {
+    if (!via.length && ps.coastal && pf.coastal) {
       const sp = call('naval.seaPath', [from, target], null);
       if (sp && sp.length) {
         const pts = [R().provPoint(from)].concat(R().seaPoints(from, sp), [R().provPoint(target)]);
         const cap = ownFleetCapacity(a);
         const turns = seaTurns(sp);
-        const plan = { ok: true, kind: 'sea', target, path: sp, turns, points: pts, label: turnsText(turns) + ' · desant', capacity: cap.cap };
-        if (!cap.fleets) { plan.ok = false; plan.reason = 'Desant wymaga własnej floty w tej prowincji'; plan.label = 'brak floty'; }
-        else if (cap.cap <= 0) { plan.ok = false; plan.reason = 'Flota nie ma wolnej pojemności'; plan.label = 'brak miejsca'; }
-        return plan;
+        sea = { ok: true, kind: 'sea', target, path: sp, turns, points: pts, label: turnsText(turns) + ' · desant', capacity: cap.cap };
+        if (!cap.fleets) { sea.ok = false; sea.reason = 'Desant wymaga własnej floty w tej prowincji'; sea.label = 'brak floty'; }
+        else if (cap.cap <= 0) { sea.ok = false; sea.reason = 'Flota nie ma wolnej pojemności'; sea.label = 'brak miejsca'; }
       }
     }
-    return { ok: false, kind: 'land', target, points: [R().provPoint(from), R().provPoint(target)], label: 'brak trasy',
-      reason: 'Brak trasy — prowincja niedostępna (neutralne państwo bez wojny) lub brak połączenia' };
+    let plan = S.routePref === 'sea' && sea ? sea : land || sea;
+    if (!plan) {
+      return { ok: false, kind: 'land', target, points: [R().provPoint(from)].concat(via.map((v) => R().provPoint(v)), [R().provPoint(target)]), label: 'brak trasy', via: via.slice(),
+        reason: via.length ? 'Brak trasy przez wskazane punkty pośrednie (usuń punkt albo wybierz inny)' : 'Brak trasy — prowincja niedostępna (neutralne państwo bez wojny) lub brak połączenia' };
+    }
+    if (land && sea) plan.routes = { land: land.turns, sea: sea.ok ? sea.turns : null, seaReason: sea.reason || '' };
+    return plan;
   }
   function planFleet(f, target) {
+    const via = S.via || [];
+    if (via.length) {   // rejs przez punkty pośrednie (strefy morskie / porty)
+      const sp = call('naval.seaPathVia', [f.prov, via, target], null);
+      if (!sp || !sp.length) return { ok: false, kind: 'fleet', target, points: [R().portPoint(f.prov)].concat(via.map((v) => R().portPoint(v)), [R().portPoint(target)]), label: 'brak trasy', via: via.slice(), reason: 'Brak trasy morskiej przez wskazane punkty' };
+      const turns = seaTurns(sp);
+      return { ok: true, kind: 'fleet', target, path: sp, turns, points: R().seaPoints(f.prov, sp), label: turnsText(turns) + ' · przez ' + via.length, via: via.slice() };
+    }
     if (isSeaNode(target)) {
       const sp = call('naval.seaPath', [f.prov, target], null);
       if (!sp || !sp.length) return { ok: false, kind: 'fleet', target, points: [R().portPoint(f.prov), R().portPoint(target)], label: 'brak trasy', reason: 'Brak trasy morskiej' };
@@ -846,16 +859,17 @@
     const routeTxt = plan.ok ? (plan.kind === 'land' ? 'Trasa lądowa: ' : plan.kind === 'sea' ? 'Desant morski: ' : 'Rejs: ') + turnsText(plan.turns) : '';
     const routeHtml = plan.ok ? '<span class="ob-route' + routeCls + '">' + routeTxt + '</span>' : '<span class="reason">' + esc(plan.reason) + '</span>';
     const buttons = '<button class="btn btn-primary" id="ob-go"' + (plan.ok ? '' : ' disabled') + '>Rozkaż <kbd>Enter</kbd></button><button class="btn btn-ghost" id="ob-cancel">Anuluj <kbd>Esc</kbd></button>';
+    const routeRow = routeRowHtml(plan);
     let html;
     if (S.sel.type === 'army') {
       // Suwak w procentach (0–100), a nie w żołnierzach: 100% zawsze oznacza dokładnie całą armię, bez reszty z zaokrąglenia kroku.
       const capPct = plan.kind === 'sea' && plan.capacity ? Math.max(1, Math.min(100, Math.floor(100 * plan.capacity / u.size))) : 100;
       html = '<div class="ob-head"><span class="ob-title">' + icon('swords') + 'Armia ' + fmtK(u.size) + ' → ' + name + '</span>' + routeHtml + '</div>' +
         '<div class="ob-row"><span class="dim">Wyślij:</span><input type="range" id="ob-size" min="1" max="100" step="1" value="' + capPct + '"' + (plan.ok ? '' : ' disabled') + '>' +
-        '<span class="ob-count" id="ob-count"></span><button class="btn btn-sm" id="ob-all"' + (plan.ok ? '' : ' disabled') + '>Całość</button>' + buttons + '</div>';
+        '<span class="ob-count" id="ob-count"></span><button class="btn btn-sm" id="ob-all"' + (plan.ok ? '' : ' disabled') + '>Całość</button>' + buttons + '</div>' + routeRow;
     } else {
       html = '<div class="ob-head"><span class="ob-title">' + icon('ship') + 'Flota (' + u.ships + ' ' + plural(u.ships, 'eskadra', 'eskadry', 'eskadr') + ') → ' + name + '</span>' + routeHtml + '</div>' +
-        '<div class="ob-row" style="justify-content:flex-end">' + buttons + '</div>';
+        '<div class="ob-row" style="justify-content:flex-end">' + buttons + '</div>' + routeRow;
     }
     bar.innerHTML = html;
     bar.classList.remove('hidden');
@@ -867,8 +881,38 @@
       $('ob-all').addEventListener('click', () => { slider.value = 100; syncRange(slider); upd(); });
     }
     $('ob-go').addEventListener('click', confirmOrder);
+    bar.querySelectorAll('[data-route]').forEach((b) => b.addEventListener('click', () => { S.routePref = b.dataset.route; openOrderBar(target); }));
+    bar.querySelectorAll('[data-via-del]').forEach((b) => b.addEventListener('click', () => { S.via.splice(+b.dataset.viaDel, 1); openOrderBar(target); }));
+    const vadd = $('ob-via-add'); if (vadd) vadd.addEventListener('click', () => { S.viaPick = !S.viaPick; openOrderBar(target); if (S.viaPick) toast((isTouch() ? 'Stuknij' : 'Kliknij') + ' prowincję, przez którą ma przejść ' + (S.sel.type === 'fleet' ? 'flota (strefa morska lub port)' : 'armia'), '', 2600); });
+    const vclr = $('ob-via-clear'); if (vclr) vclr.addEventListener('click', () => { S.via = []; S.viaPick = false; openOrderBar(target); });
     $('ob-cancel').addEventListener('click', () => { closeOrderBar(); R().requestDraw(); });
     R().requestDraw();
+  }
+  /** Wiersz trasy w pasku rozkazu: wybór lądem/morzem (gdy obie możliwe) i punkty pośrednie. */
+  function routeRowHtml(plan) {
+    let h = '<div class="ob-route-row">';
+    if (plan.routes) {
+      const r = plan.routes;
+      h += '<div class="seg ob-seg"><button type="button" class="seg-btn' + (plan.kind === 'land' ? ' on' : '') + '" data-route="land">' + icon('swords') + ' Lądem · ' + turnsText(r.land) + '</button>' +
+        '<button type="button" class="seg-btn' + (plan.kind === 'sea' ? ' on' : '') + '" data-route="sea"' + (r.sea == null ? ' title="' + esc(r.seaReason) + '"' : '') + '>' + icon('ship') + ' Morzem · ' + (r.sea == null ? 'niedostępne' : turnsText(r.sea)) + '</button></div>';
+    }
+    const via = S.via || [];
+    h += '<div class="ob-via"><span class="dim">Przez:</span>' + (via.length ? via.map((v, i) => '<span class="via-chip"><b>' + (i + 1) + '</b>' + esc(nodeName(v)) + '<button type="button" data-via-del="' + i + '" aria-label="Usuń">×</button></span>').join('') : '<span class="dim">najkrótszą drogą</span>') +
+      '<button type="button" class="btn btn-sm' + (S.viaPick ? ' active' : '') + '" id="ob-via-add">' + (S.viaPick ? 'Wskaż na mapie…' : '+ Punkt pośredni') + '</button>' +
+      (via.length ? '<button type="button" class="btn btn-sm btn-ghost" id="ob-via-clear">Wyczyść</button>' : '') + '</div>';
+    return h + '</div>';
+  }
+  /** Tryb wskazywania punktu pośredniego: kliknięta prowincja/strefa trafia do S.via (przed celem). */
+  function addWaypoint(node) {
+    const plan = R().view.pending; if (!plan || node == null || node < 0) return false;
+    const u = unitObj(S.sel);
+    if (!u || node === plan.target || node === u.prov) return true;
+    if (S.sel.type === 'army' && isSeaNode(node)) { toast('Armia przechodzi tylko przez prowincje lądowe', 'bad', 2000); return true; }
+    if (S.sel.type === 'fleet' && !call('naval.isNode', [node], false)) { toast('Flota płynie tylko przez strefy morskie i porty', 'bad', 2000); return true; }
+    S.via = (S.via || []).filter((v) => v !== node).concat([node]);
+    S.viaPick = false;
+    openOrderBar(plan.target);
+    return true;
   }
   /** Liczba wysyłanych żołnierzy z suwaka %; gdy w prowincji zostałaby drobna resztka — cała armia. */
   function orderSize(u) {
@@ -878,6 +922,7 @@
     return n >= u.size - WT.military.MIN_REMAINDER ? u.size : n;
   }
   function closeOrderBar() {
+    S.via = []; S.viaPick = false; S.routePref = null;
     $('order-bar').classList.add('hidden');
     $('order-bar').innerHTML = '';
     document.body.classList.remove('ob-open');
@@ -888,12 +933,13 @@
     const plan = R().view.pending, u = unitObj(S.sel);
     if (!plan || !u || !plan.ok) return;
     let res;
-    if (S.sel.type === 'fleet') res = call('naval.orderFleet', [u.id, plan.target], null);
+    const via = (plan.via || []).slice();
+    if (S.sel.type === 'fleet') res = call('naval.orderFleet', [u.id, plan.target, via], null);
     else {
       const size = orderSize(u);
       const sizeArg = size < u.size ? size : undefined;
       if (plan.kind === 'sea') res = call('naval.planInvasion', [u.id, plan.target, sizeArg], null);
-      else res = call('military.order', [u.id, plan.target, sizeArg], null);
+      else res = call('military.order', [u.id, plan.target, sizeArg, { via }], null);
     }
     closeOrderBar();
     if (!res || res.ok === false) toast((res && res.reason) || 'Nie można wydać rozkazu', 'bad');
@@ -2445,6 +2491,7 @@
     } else openNode(u.prov);
   }
   function onMapClick(prov, ev, sea) {
+    if (S.inGame && S.viaPick && orderBarOpen()) { addWaypoint(prov >= 0 ? prov : sea); return; }
     if (!S.inGame) { if (prov >= 0) selectStartCountry(R().ownerOf(prov) === 'XXX' ? null : R().ownerOf(prov), false); return; }
     if (S.godTool) { applyGodTool(prov); return; }
     if (S.airSel) { doRaid(prov); return; }
@@ -2474,8 +2521,10 @@
   UI.primaryArmyAt = primaryArmyAt;
   /** Cel rozkazu pod kursorem: prowincja albo (dla floty) strefa morska. */
   function orderTarget(prov, sea) { return prov >= 0 ? prov : (S.sel && S.sel.type === 'fleet' && sea >= 0 ? sea : -1); }
-  function onRightClick(prov, sx, sy, sea) {
+  function onRightClick(prov, sx, sy, sea, ev) {
     if (!S.inGame) return;
+    // Shift+PPM przy otwartym pasku rozkazu = dodaj punkt pośredni
+    if (ev && ev.shiftKey && orderBarOpen() && S.sel) { addWaypoint(orderTarget(prov, sea)); return; }
     if (S.shellSel) { stopShellTarget(); return; }
     const t = orderTarget(prov, sea);
     if (S.sel && t >= 0) openOrderBar(t);
@@ -2485,6 +2534,7 @@
   // Dotyk: stuknięcie. Gdy własna jednostka jest zaznaczona, stuknięcie innej prowincji (lub obcej armii) = wybór celu.
   function onTap(prov, sx, sy, unit, sea) {
     if (!S.inGame) { onMapClick(prov); return; }
+    if (S.viaPick && orderBarOpen()) { addWaypoint(prov >= 0 ? prov : sea); return; }
     const at = unit && !isSeaNode(unit.prov) ? unit.prov : prov;   // jednostka na morzu nie wskazuje prowincji
     if (S.godTool) { if (at >= 0) applyGodTool(at); return; }
     if (S.multi) { if (at >= 0) toggleMulti(at); return; }
@@ -2621,6 +2671,7 @@
   function escapeChain() {
     if (closeTopModal()) return;
     if (!$('menu').classList.contains('hidden')) { toggleMenu(false); return; }
+    if (S.viaPick) { S.viaPick = false; const pl = R().view.pending; if (pl) openOrderBar(pl.target); return; }
     if (orderBarOpen()) { closeOrderBar(); R().requestDraw(); return; }
     if (S.airSel) { stopAirTarget(); return; }
     if (S.shellSel) { stopShellTarget(); return; }

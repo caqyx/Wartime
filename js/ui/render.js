@@ -873,7 +873,19 @@
     if (plan && plan.points && plan.points.length > 1) {
       var color = !plan.ok ? COLORS.routeBad : (plan.kind === 'land' ? COLORS.route : COLORS.routeSea);
       drawPolyline(plan.points, color, 2.8, plan.label || null, true);
+      if (plan.via && plan.via.length) drawWaypoints(plan.via, color);
     }
+  }
+  // Punkty pośrednie trasy: ponumerowane kółka
+  function drawWaypoints(via, color) {
+    ctx.font = '700 11px ' + FONT_SANS; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    via.forEach(function (id, i) {
+      var pt = isSeaId(id) || !MAP.provinces[id] ? portPoint(id) : provPoint(id), sp = mapToScreen(pt[0], pt[1]);
+      ctx.beginPath(); ctx.arc(sp[0], sp[1], 10, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(4,8,14,0.85)'; ctx.fill();
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#eef6fb'; ctx.fillText(String(i + 1), sp[0], sp[1] + 0.5);
+    });
   }
   function provPoint(id) { var p = MAP.provinces[id]; return [p.cx, p.cy]; }
   function portPoint(id) {
@@ -1395,7 +1407,7 @@
     var m = screenToMap(p[0], p[1]), prov = pickProvince(m[0], m[1]), sea = seaAt(prov, m[0], m[1]);
     if (unit && wasDrag) { call('dragDrop', unit, prov, sea); needsDraw = true; return; }
     if (wasDrag) return;
-    if (button === 2) { call('rightClick', prov, p[0], p[1], sea); needsDraw = true; return; }
+    if (button === 2) { call('rightClick', prov, p[0], p[1], sea, e); needsDraw = true; return; }
     if (button !== 0) return;
     var u = pickUnitAt(p[0], p[1]);
     if (u) call('unitClick', u, e.shiftKey);
