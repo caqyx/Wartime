@@ -477,7 +477,7 @@ WT.ai = (function () {
       if (rel > relLimit || !S.country(t).alive || D().checkDeclareWar(cc, t)) continue;
       if (t === G().player && turn() < PLAYER_GRACE_TURNS) continue;
       if (mine < ratio * coalitionPower(t, cc)) continue;
-      var p = WAR_CHANCE * WAR_CHECK_EVERY * (1 + (-rel - 25) / 50) * (1 + turn() / 150) * Math.pow(k, 1.5);
+      var p = WAR_CHANCE * WAR_CHECK_EVERY * (1 + (-rel - 25) / 50) * (1 + turn() / 150) * Math.pow(k, 1.5) * (WT.world ? WT.world.aeWarFactor(t) : 1);
       if (U.chance(p)) return t;
     }
     return null;

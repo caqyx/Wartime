@@ -253,6 +253,7 @@ WT.vassal = (function () {
     }
     if (terms.disarm) parts.push('rozbrojenie (−' + fmtInt(disarm(loser)) + ' żołnierzy)');
     if (terms.vassal) { makeVassal(loser, winner, true); parts.push('wasalizacja'); }
+    if (WT.world) { WT.world.onConquest(winner, taken); if (terms.vassal) WT.world.addAE(winner, 10); }
     S.addLog('Traktat: ' + name(loser) + ' przyjmuje warunki ' + name(winner) + ': ' + (parts.join(', ') || 'brak') + '.', winner);
   }
   function payContribution(loser, winner) {
@@ -364,8 +365,9 @@ WT.vassal = (function () {
     var chk = canAnnex(o, v);
     if (!chk.ok) return chk;
     E().pay(o, chk.cost);
-    var n = 0;
-    S.provincesOf(v).forEach(function (id) { S.setOwner(id, o); n++; });
+    var n = 0, annexed = S.provincesOf(v);
+    if (WT.world) WT.world.onConquest(o, annexed, 0.3);
+    annexed.forEach(function (id) { S.setOwner(id, o); n++; });
     S.armiesOf(v).forEach(function (a) { var size = a.size, prov = a.prov; S.removeArmy(a.id); if (!a.embarked) S.createArmy(o, prov, size); });
     S.fleetsOf(v).forEach(function (f) { f.owner = o; });
     S.country(o).treasury += Math.max(0, S.country(v).treasury);

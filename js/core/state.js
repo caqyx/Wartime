@@ -674,6 +674,7 @@ WT.state = (function () {
       indexRemove(idx.byOwner, p.owner, provId);
       indexAdd(idx.byOwner, cc, provId);
       p.owner = cc;
+      p.acq = G().turn;          // tura przejęcia (niepokoje po podboju)
       p.builds = {};           // budowy poprzedniego właściciela przepadają
     }
     setCtrl(provId, cc);

@@ -176,12 +176,17 @@
     var t = econRank ? econRank[id] : 0;
     return t < 0.5 ? mix('#262a4a', '#2c7d78', t * 2) : mix('#2c7d78', '#d6e06c', (t - 0.5) * 2);
   }
+  function unrestColor(id) {
+    var g = G(), u = g && g.provinces[id] ? (g.provinces[id].unrest || 0) / 100 : 0;
+    return u < 0.35 ? mix('#2e4a3c', '#9a8a3a', u / 0.35) : mix('#9a8a3a', '#c2413c', Math.min(1, (u - 0.35) / 0.45));
+  }
   function provinceFill(id) {
     if (isVoid(id)) return COLORS.background;
     switch (mode) {
       case 'diplomatic': return diplomacyColor(id);
       case 'economic': return economyColor(id);
       case 'terrain': return TERRAIN_COLORS[MAP.provinces[id].terrain] || '#888';
+      case 'unrest': return unrestColor(id);
       default: return countryColor(ownerOf(id));
     }
   }

@@ -371,3 +371,8 @@ Fonty: systemowe sans + monospace dla liczb.
 - `economy.recruitCost/canRecruit/recruit(cc, prov, k, type)` (`COST_MULT`), utrzymanie wg `upkeepSoldiers(cc)`.
 - `supplySet(cc)` (BFS od własnych kontrolowanych ziem przez prowincje kontrolowane przez kraj/sojuszników/z przejściem, cache na turę), `isSupplied(a)`, `processTurn()` (w `turn.end` po okupacjach).
 - AI: `pickUnitType`, `effStrength` (org), odpoczynek przy org < 0.35, premia celu za kleszcze i okrążone armie wroga.
+
+### Żywy świat (js/core/world.js → WT.world)
+- `country.stabMods [{v, until, why}]` (`addStab`, `stabilityMod` w `economy.stabilityTarget`), `country.ae` (`addAE`, `onConquest(cc, provs, factor)` z `diplomacy.annexOccupied`, `vassal.applyTreaty`, `vassal.annex`; `aeWarFactor` w AI), `province.unrest` (`unrestTarget`, dochód × (1 − unrest/200)), `province.acq` (tura przejęcia, `state.setOwner`).
+- Wydarzenia: `EVENTS`, `HISTORY` (scenariusz + data), `fire(ev, cc)` (gracz → `G.events`, AI → opcja `ai`), `answer(id, opt)`, `view(e)`, `pending()`; `G.lastEventTurn`, `G.historyDone`. Bunt: `revolt(prov)` → `state.spawnCountry` narodu rdzennego + wojna. Koalicje: `formCoalition`, `coalitionWar`.
+- `processTurn()` w `turn.end` po dyplomacji. UI: `ui.checkEvents()` po turze, tryb mapy `unrest`.

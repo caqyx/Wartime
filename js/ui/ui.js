@@ -207,6 +207,7 @@
     trade: '<path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/>',
     crown: '<path d="M3.5 8.5l4.5 4L12 5.5l4 7 4.5-4-2 10.5h-13z"/><path d="M6 21h12"/>',
     scroll: '<path d="M8 4h10a2 2 0 0 1 2 2v1.5h-4"/><path d="M16 6v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1.5h10"/><path d="M8 4a2 2 0 0 0-2 2v11"/><path d="M9.5 9h3.5M9.5 12.5h3.5"/>',
+    flame: '<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5.5.3 1.6 1 2.5 2 3C11.5 8 11.5 5.5 12 3z"/>',
     trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H4.5a3 3 0 0 0 3.5 4M16 6h3.5a3 3 0 0 1-3.5 4"/><path d="M12 13v4M8.5 20.5h7M9.5 17h5"/>',
     select: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><path d="M14 17.5l2 2 4.5-4.5"/>',
     mouse: '<rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v3"/>'
@@ -270,7 +271,7 @@
       b.insertAdjacentHTML('afterbegin', icon(menuIcons[b.dataset.act] || 'info'));
       b.appendChild(txt);
     });
-    const modeIcons = { political: 'flag', diplomatic: 'handshake', economic: 'chart', terrain: 'mountain' };
+    const modeIcons = { political: 'flag', diplomatic: 'handshake', economic: 'chart', terrain: 'mountain', unrest: 'flame' };
     document.querySelectorAll('#mapmodes .mm-btn').forEach((b) => { const s = b.querySelector('.mm-ico'); if (s && !s.firstChild) s.innerHTML = icon(modeIcons[b.dataset.mode]); });
     const lh = $('log-head');
     if (lh && !lh.querySelector('.ico')) { lh.firstElementChild.insertAdjacentHTML('afterbegin', icon('clock', 'ico-sm')); $('log-toggle').innerHTML = icon('chevron', 'ico-sm'); }
@@ -696,7 +697,7 @@
   // ===========================================================================
   // Tryby mapy + legenda
   // ===========================================================================
-  const MODES = ['political', 'diplomatic', 'economic', 'terrain'];
+  const MODES = ['political', 'diplomatic', 'economic', 'terrain', 'unrest'];
   function setMapMode(m) {
     R().setMode(m);
     document.querySelectorAll('.mm-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === m));
@@ -709,6 +710,7 @@
     let html = '';
     if (m === 'diplomatic') html = legendItem('#d9b86a', 'Ty') + legendItem('#a585f0', 'Wasal') + legendItem('#5b8def', 'Sojusznik') + legendItem('#3fb8b0', 'Pakt') + legendItem('#e5484d', 'Wojna') +
       '<span class="li">Relacje <span class="grad" style="background:linear-gradient(90deg,#94464a,#5d6673,#3f9466)"></span></span>';
+    else if (m === 'unrest') html = '<span class="li">Niepokoje: spokój <span class="grad" style="background:linear-gradient(90deg,#2e4a3c,#9a8a3a,#c2413c)"></span> bunt (≥70)</span>';
     else if (m === 'economic') html = '<span class="li">Rozwój i fabryki: niski <span class="grad" style="background:linear-gradient(90deg,#262a4a,#2c7d78,#d6e06c)"></span> wysoki</span>';
     else if (m === 'terrain') html = [['#8fa865', 'plains'], ['#a99a63', 'hills'], ['#867a70', 'mountains'], ['#4e7a4c', 'forest'], ['#cdb882', 'desert'], ['#a3b2b8', 'tundra'], ['#33735a', 'jungle']]
       .map((t) => legendItem(t[0], TERRAIN_PL[t[1]])).join('');
@@ -1030,7 +1032,10 @@
       const rl = (pd.buildings || {}).radar || 0;
       if (rl) h += '<span class="k">Radar</span><span class="v">' + fmtInt(WT.air.radarRangeKm(rl, me())) + ' km</span>';
     }
-    if (pd.unrest) h += '<span class="k">Niepokoje</span><span class="v ' + (pd.unrest > 30 ? 'neg' : '') + '">' + fmtInt(pd.unrest) + '</span>';
+    if (pd.unrest || (WT.world && WT.world.unrestTarget(S.selProv) > 0)) {
+      const tgt = WT.world ? Math.round(WT.world.unrestTarget(S.selProv)) : pd.unrest;
+      h += '<span class="k">Niepokoje</span><span class="v ' + (pd.unrest >= 50 ? 'neg' : '') + '" title="Dochód prowincji −' + Math.round((pd.unrest || 0) / 2) + '%; od 70 grozi bunt. Uspokaja garnizon i fort.">' + fmtInt(pd.unrest || 0) + (tgt !== (pd.unrest || 0) ? ' → ' + tgt : '') + (pd.unrest >= 70 ? ' · grozi bunt' : '') + '</span>';
+    }
     return h + '</div></div>';
   }
   /** Skład (pasek piechota/szybkie/wsparcie), organizacja i zaopatrzenie armii. */
@@ -1307,6 +1312,7 @@
     html += '<div class="section dip-settings"><label class="check"><input type="checkbox" id="dip-nopacts"' + (settingsOf().autoRejectPacts ? ' checked' : '') + '> <span>Automatycznie odrzucaj pakty o nieagresji</span></label>' +
       (WT.land ? '<div class="land-pause"><span>Oferty ziemi od AI<small>' + (paused ? (pausedUntil >= 1e9 ? 'wstrzymane do odwołania' : 'wstrzymane jeszcze ' + (pausedUntil - G().turn) + ' tur') : 'maks. 1 oferta na ' + WT.land.OFFER_EVERY + ' tur') + '</small></span>' +
         '<select id="dip-landpause"><option value="0"' + (paused ? '' : ' selected') + '>Przyjmuj</option><option value="10">Wstrzymaj 10 tur</option><option value="25">Wstrzymaj 25 tur</option><option value="52">Wstrzymaj 52 tury</option><option value="inf"' + (paused && pausedUntil >= 1e9 ? ' selected' : '') + '>Wstrzymaj do odwołania</option></select></div>' : '') + '</div>';
+    html += myStateHtml();
     if (WT.vassal && !overlordOf(me())) html += '<div class="section"><button class="btn" id="dip-release" style="width:100%;justify-content:center">' + icon('crown') + ' Utwórz państwo-wasala (odtwórz upadłe)</button></div>';
     html += '<div class="section"><input type="search" id="dip-search" placeholder="Szukaj państwa…" value="' + esc(S.diploQuery) + '" style="width:100%"></div>';
     html += '<div class="section"><div class="country-list" id="dip-list" style="max-height:200px">' + diploListHtml() + '</div></div>';
@@ -1373,6 +1379,16 @@
     return h + '</div>' + countryWarsHtml(cc) + reparationsHtml(cc) + vassalSectionHtml(cc) + overlordSectionHtml(cc) + aidSectionHtml(cc) + '</div>';
   }
 
+  /** Agresywna ekspansja i modyfikatory stabilności gracza (góra panelu dyplomacji). */
+  function myStateHtml() {
+    if (!WT.world) return '';
+    const c = liveCountry(me()), ae = Math.round(WT.world.aeOf(me())), mods = (c.stabMods || []).filter((m) => m.until > G().turn);
+    const lvl = ae >= WT.world.AE_WAR ? 'war' : ae >= WT.world.AE_COALITION ? 'high' : ae >= 25 ? 'mid' : 'low';
+    return '<div class="section my-state"><div class="threat"><div class="threat-head"><span class="k">Agresywna ekspansja</span><span class="threat-lbl ' + lvl + '">' + esc(WT.world.aeLabel(ae)) + ' · ' + ae + '</span></div>' +
+      '<div class="threat-bar"><i class="' + lvl + '" style="width:' + Math.min(100, ae) + '%"></i></div></div>' +
+      '<div class="hint">Rośnie z podbojami obcych ziem (traktaty, aneksje); od ' + WT.world.AE_COALITION + ' sąsiedzi zawierają sojusze przeciw tobie, od ' + WT.world.AE_WAR + ' koalicja może zaatakować. Maleje w czasie pokoju.</div>' +
+      (mods.length ? '<div class="kv" style="margin-top:6px">' + mods.map((m) => '<span class="k">' + esc(m.why) + '</span><span class="v ' + (m.v >= 0 ? 'pos' : 'neg') + '">' + (m.v > 0 ? '+' : '') + m.v + ' stab. · ' + (m.until - G().turn) + 't</span>').join('') + '</div>' : '') + '</div>';
+  }
   /** Pozostały czas paktów i rozejmu z `cc`. */
   function treatyTimesHtml(cc) {
     const p = me(), rows = [];
@@ -1959,7 +1975,7 @@
       turnToasts(before, res);
       refreshAll();
       checkGameOver();
-      checkProposals();
+      checkEvents();
     }, 30);
   }
   UI.endTurn = endTurn;
@@ -2038,6 +2054,25 @@
     });
   }
   UI.checkProposals = checkProposals;
+  /** Wydarzenia świata dla gracza (WT.world): okno z opcjami do wyboru. */
+  function checkEvents() {
+    const g = G(); if (!g || !S.inGame || S.proposalOpen || !WT.world) return;
+    const e = WT.world.pending()[0]; if (!e) { checkProposals(); return; }
+    const v = WT.world.view(e);
+    S.proposalOpen = true;
+    openModal({
+      title: icon('flame') + ' ' + esc(v.title), dismissable: false,
+      body: '<p>' + esc(v.text) + '</p><div class="event-opts">' + v.options.map((o, i) => '<button class="btn event-opt" data-opt="' + i + '"><b>' + esc(o.label) + '</b><small>' + esc(o.desc) + '</small></button>').join('') + '</div>',
+      buttons: [],
+      onOpen: (el, close) => el.querySelectorAll('[data-opt]').forEach((b) => b.addEventListener('click', () => {
+        const res = WT.world.answer(e.id, +b.dataset.opt);
+        toast(res.reason, 'ok', 3000);
+        close(); R().invalidate(); refreshAll();
+      })),
+      onClose: () => { S.proposalOpen = false; setTimeout(checkEvents, 150); }
+    });
+  }
+  UI.checkEvents = checkEvents;
 
   // ===========================================================================
   // Tooltip
@@ -2724,7 +2759,7 @@
       if (!e.repeat) endTurn();
       return;
     }
-    const digit = /^Digit([1-4])$/.exec(e.code) || /^Numpad([1-4])$/.exec(e.code);
+    const digit = /^Digit([1-5])$/.exec(e.code) || /^Numpad([1-5])$/.exec(e.code);
     if (digit) { setMapMode(MODES[+digit[1] - 1]); return; }
     if (e.code === 'KeyN') { openScience(); return; }
     if (e.code === 'KeyB') { if (S.multi) exitMulti(); else startMulti(S.selProv >= 0 && provDyn(S.selProv).owner === me() ? [S.selProv] : []); return; }

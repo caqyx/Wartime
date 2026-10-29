@@ -1,7 +1,7 @@
 /* Testy logiki gry w node (bez frameworków): `node tests/run_tests.js` */
 var path = require('path');
 var ROOT = path.join(__dirname, '..');
-var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'land', 'military', 'warfare', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
+var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'land', 'world', 'military', 'warfare', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
 CORE.forEach(function (m) { require(path.join(ROOT, 'js/core', m + '.js')); });
 var WT = global.WT;
 var mock = require('./mock_map.js');
@@ -1084,6 +1084,49 @@ test('wojna: rodzaje wojsk, organizacja, zaopatrzenie i okrążenie', function (
   assert(lost.size < 20000 && lost.org < 1 && lost.oos === 1, 'okrążona traci stan i organizację');
   eq(ok.size, 20000, 'zaopatrzona bez strat');
   assert(G().log.some(function (l) { return /Okrążenie/.test(l.text); }), 'ostrzeżenie dla gracza');
+});
+
+test('żywy świat: wydarzenia, niepokoje, bunt, agresywna ekspansja', function () {
+  freshGame();
+  var Wd = WT.world, S = WT.state, D = WT.diplomacy;
+  // wydarzenie gracza: kolejka i odpowiedź
+  var crisis = Wd.EVENTS.filter(function (e) { return e.id === 'crisis'; })[0];
+  G().countries.AAA.treasury = 100;
+  Wd.fire(crisis, 'AAA');
+  eq(Wd.pending().length, 1, 'wydarzenie czeka na gracza');
+  var v = Wd.view(Wd.pending()[0]);
+  eq(v.options.length, 2, 'dwie opcje');
+  var res = Wd.answer(Wd.pending()[0].id, 1);
+  assert(res.ok && G().countries.AAA.stabMods.length === 1, 'modyfikator stabilności: ' + res.reason);
+  assert(Wd.stabilityMod(G().countries.AAA) < 0, 'zaciskanie pasa obniża stabilność');
+  // AI wybiera samo
+  var t0 = G().countries.BBB.treasury;
+  Wd.fire(Wd.EVENTS.filter(function (e) { return e.id === 'boom'; })[0], 'BBB');
+  eq(Wd.pending().length, 0, 'AI nie czeka');
+  // niepokoje po podboju obcej prowincji
+  var bp = S.provincesOf('BBB').filter(function (id) { return id !== G().countries.BBB.capital; })[0];
+  S.setOwner(bp, 'AAA');
+  assert(Wd.unrestTarget(bp) >= 40, 'obca, świeżo zdobyta prowincja: ' + Wd.unrestTarget(bp));
+  var inc0 = WT.economy.income('AAA').tax;
+  G().provinces[bp].unrest = 80;
+  assert(WT.economy.income('AAA').tax < inc0, 'niepokoje obniżają dochód');
+  // bunt odradza upadłe państwo
+  var ccc = S.provincesOf('CCC');
+  ccc.forEach(function (id) { S.setOwner(id, 'AAA'); G().provinces[id].unrest = 90; });
+  D.refreshCountries();
+  eq(G().countries.CCC.alive, false, 'CCC upadło');
+  Wd.revolt(ccc[0]);
+  eq(G().countries.CCC.alive, true, 'bunt odradza CCC');
+  assert(D.atWar('CCC', 'AAA'), 'odrodzone państwo walczy z okupantem');
+  // agresywna ekspansja psuje relacje sąsiadów
+  Wd.addAE('AAA', 60);
+  setRel('AAA', 'BBB', 0);
+  var r0 = D.relation('AAA', 'BBB');
+  G().turn = 4;
+  Wd.processTurn();
+  assert(D.relation('AAA', 'BBB') < r0, 'sąsiedzi nie ufają agresorowi');
+  assert(Wd.aeOf('AAA') < 60, 'ekspansja wygasa');
+  assert(Wd.aeWarFactor('AAA') > 2, 'AI chętniej atakuje agresora');
 });
 
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {

@@ -1001,3 +1001,10 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .army-detail .org { font-weight: 650; color: #9fe2bd; }
 .army-detail .org.mid { color: #e8c66a; } .army-detail .org.neg { color: #ff9c96; }
 .army-detail .tag { height: 18px; font-size: 10px; }
+
+/* ---------- Wydarzenia, agresywna ekspansja ---------- */
+.event-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.event-opt { flex-direction: column; align-items: flex-start; gap: 3px; height: auto; min-height: 52px; padding: 10px 14px; text-align: left; white-space: normal; }
+.event-opt small { font-size: var(--fs-xs); color: var(--text-3); font-weight: 500; }
+.event-opt:hover small { color: var(--text-2); }
+.my-state .hint { margin-top: 6px; }

@@ -81,7 +81,7 @@ WT.economy = (function () {
     for (i = 0; i < own.length; i++) {
       var p = G().provinces[own[i]];
       if (p.ctrl !== cc) continue;     // okupowana prowincja nic nie daje właścicielowi
-      var base = provGdp(own[i]) * c.taxRate / WEEKS * mod * incomeMod * (p.bombed > 0 ? BOMBED_INCOME : 1);
+      var base = provGdp(own[i]) * c.taxRate / WEEKS * mod * incomeMod * (p.bombed > 0 ? BOMBED_INCOME : 1) * (p.unrest ? 1 - p.unrest / 200 : 1);
       res.tax += base;
       res.factories += base * (FACTORY_BONUS * techMod(cc, 'factory') * p.buildings.factory + PORT_BONUS * p.buildings.port);
     }
@@ -334,6 +334,7 @@ WT.economy = (function () {
   function stabilityTarget(c) {
     var t = 70 + (0.15 - c.taxRate) * 200 - c.warExhaustion * 0.4 - occupiedShare(c.cc) * 30;
     if (c.ideology === 'autorytaryzm' || c.ideology === 'komunizm') t += 5;
+    if (WT.world) t += WT.world.stabilityMod(c);
     return U.clamp(t, 0, 100);
   }
 

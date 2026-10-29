@@ -319,6 +319,7 @@ WT.diplomacy = (function () {
       if (winners.indexOf(ctrl) >= 0) { S.setOwner(id, ctrl); taken.push(id); }
     });
     if (taken.length) WT.events.emit('annex', { loser: loser, provinces: taken });
+    if (taken.length && WT.world) winners.forEach(function (w) { WT.world.onConquest(w, taken.filter(function (id) { return G().provinces[id].owner === w; })); });
   }
 
   function payReparations(loser, winner) {
