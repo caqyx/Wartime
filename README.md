@@ -90,6 +90,14 @@ python3 -m http.server 8000   # http://localhost:8000
 - **Zapis:** 5 slotów + autosave co 5 tur, eksport/import JSON.
 - **Konflikty 2026** (opcja): Rosja–Ukraina (okupowany Donbas, Krym), Izrael–Palestyna.
 
+## Powód do ponownej gry
+
+- **Poziomy trudności** (ekran startowy): Łatwy (twój dochód ×1,25, AI ×0,9), Normalny, Trudny (×0,9 / AI ×1,15, AI agresywniejsze), Bardzo trudny (×0,8 / AI ×1,3). Wynik partii mnożony wg poziomu.
+- **Piaskownica:** God Mode, pokojowe AI i brak losowych wydarzeń — do swobodnych eksperymentów.
+- **Misje** (menu → „Cele, misje i osiągnięcia”): 4 cele dopasowane do państwa (odzyskanie ziem rdzennych, PKB, liczba prowincji, pokonanie rywala lub wasalizacja sąsiada, uniwersytety, technologia) z paskiem postępu; nagroda: pieniądze i stabilność.
+- **15 osiągnięć** zapisywanych w przeglądarce między partiami (np. Pierwsza krew, Suzeren, Odrodzenie, Niepodległość, Imperium, Władca świata, Pacyfista, Twardziel).
+- **Ekran wyniku:** menu → „Zakończ partię (wynik)” albo po upadku państwa — wynik punktowy, tury, prowincje (szczyt), bitwy, wojny, traktaty, wasale, misje i osiągnięcia tej partii.
+
 ## Czytelność i odczucia
 
 - **Animacje:** po turze armie i floty płynnie przechodzą na nowe pozycje; bitwy (pierścienie i skrzyżowane miecze), zajęcia prowincji i ostrzał pokazywane są efektami na mapie.

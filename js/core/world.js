@@ -350,7 +350,7 @@ WT.world = (function () {
     updateUnrest();
     updateAE();
     rollHistory();
-    rollEvents();
+    if (S.settings().events !== false) rollEvents();
     G().events = pending().filter(function (e) { return turn() - e.turn < 6; });   // nieodebrane wygasają
   }
 

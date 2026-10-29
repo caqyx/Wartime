@@ -264,7 +264,7 @@
     if (menuBtn && !menuBtn.querySelector('.ico')) { menuBtn.innerHTML = icon('menu'); menuBtn.classList.add('btn-icon'); menuBtn.setAttribute('aria-label', 'Menu'); }
     const endLabel = document.querySelector('#btn-endturn .btn-label'); if (endLabel) endLabel.classList.remove('btn-label');
     const god = $('tb-god'); if (god && !god.querySelector('.ico')) god.innerHTML = icon('sparkles') + 'GOD';
-    const menuIcons = { settings: 'sliders', science: 'flask', ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout', stats: 'chart', tutorial: 'info', sound: 'bell' };
+    const menuIcons = { goals: 'flag', finish: 'trophy', settings: 'sliders', science: 'flask', ranking: 'trophy', save: 'save', 'god-toggle': 'sparkles', help: 'keyboard', exit: 'logout', stats: 'chart', tutorial: 'info', sound: 'bell' };
     document.querySelectorAll('#menu .menu-item').forEach((b) => {
       if (b.querySelector('.ico')) return;
       const txt = document.createElement('span'); txt.textContent = b.textContent; b.textContent = '';
@@ -287,6 +287,7 @@
       const l3 = $('opt-nopacts') && $('opt-nopacts').closest('label'), ag = $('opt-aggr-row');
       if (l3) { box.appendChild(l3); l3.querySelector('span').innerHTML = 'Odrzucaj pakty automatycznie<small>Propozycje paktów o nieagresji nie będą się pojawiać</small>'; }
       if (ag) box.appendChild(ag);
+      const sb = $('opt-sandbox') && $('opt-sandbox').closest('label'); if (sb) box.appendChild(sb);
       l1.querySelector('span').innerHTML = 'God Mode<small>Nielimitowana kasa i rezerwy, narzędzia edycji</small>';
     }
     const btnStart = $('btn-start'); if (btnStart && !btnStart.querySelector('.ico')) btnStart.insertAdjacentHTML('beforeend', icon('next'));
@@ -462,8 +463,10 @@
   }
   function scenarioInfo(id) { return scenarioList().find((x) => x.id === id) || SCEN_2026; }
   function startOpts() {
+    const sandbox = $('opt-sandbox') && $('opt-sandbox').checked;
     return { scenario: S.scen, continents: S.conts.slice(), startWars: $('opt-wars').checked, seed: S.previewSeed,
-      god: $('opt-god').checked, autoRejectPacts: $('opt-nopacts').checked, aiAggression: +$('opt-aggr').value };
+      god: $('opt-god').checked || sandbox, autoRejectPacts: $('opt-nopacts').checked, aiAggression: sandbox ? 0 : +$('opt-aggr').value,
+      difficulty: S.difficulty || 'normal', events: !sandbox };
   }
   function buildPreview() {
     if (!has('state.newGame')) return;
@@ -510,6 +513,8 @@
     applySetup();
   }
   function showStart() {
+    while (S.modals.length) closeModal(S.modals[S.modals.length - 1]);   // powrót do menu zamyka otwarte okna
+    S.proposalOpen = false;
     if ($('minimap')) $('minimap').classList.add('hidden');
     if ($('turn-summary')) $('turn-summary').classList.add('hidden');
     if ($('tutorial')) $('tutorial').remove();
@@ -712,6 +717,11 @@
     $('start-search').addEventListener('input', renderStartList);
     $('opt-scen').addEventListener('click', (e) => { const b = e.target.closest('[data-scen]'); if (b) setScenario(b.dataset.scen); });
     $('opt-conts').addEventListener('click', (e) => { const b = e.target.closest('[data-ct]'); if (b) toggleContinent(b.dataset.ct); });
+    $('opt-diff').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-diff]'); if (!b) return;
+      S.difficulty = b.dataset.diff;
+      document.querySelectorAll('#opt-diff .seg-btn').forEach((x) => x.classList.toggle('on', x === b));
+    });
     $('opt-wars').addEventListener('change', applySetup);
     $('start-results').addEventListener('click', (e) => { const it = e.target.closest('[data-cc]'); if (it) selectStartCountry(it.dataset.cc, true); });
     $('btn-start').addEventListener('click', startGame);
@@ -837,6 +847,8 @@
     else if (act === 'settings') openSettings();
     else if (act === 'help') openHelp();
     else if (act === 'stats') openStats();
+    else if (act === 'goals') openGoals();
+    else if (act === 'finish') confirmModal('Zakończ partię', 'Zakończyć partię i zobaczyć wynik? Możesz potem grać dalej.', 'Pokaż wynik', () => openEndScreen(false));
     else if (act === 'tutorial') startTutorial(true);
     else if (act === 'sound') { WT.sound.setEnabled(!WT.sound.enabled()); syncSoundLabel(); if (WT.sound.enabled()) WT.sound.play('click'); }
     else if (act === 'exit') confirmModal('Wyjście', 'Wrócić do menu głównego? Niezapisany postęp zostanie utracony (autozapis co 5 tur).', 'Wyjdź', () => { WT.G = null; showStart(); }, true);
@@ -2173,9 +2185,49 @@
     const c = liveCountry(me());
     if (((c && c.alive === false) || G().gameOver) && !S.gameOverShown) {
       S.gameOverShown = true;
+      if (WT.goals) { openEndScreen(true); return; }
       openModal({ title: 'Koniec gry', body: '<p>' + esc(countryName(me())) + ' przestało istnieć.</p>', buttons: [
         { label: 'Obserwuj dalej' }, { label: 'Menu główne', cls: 'btn-primary', onClick: () => { WT.G = null; showStart(); } }] });
     }
+  }
+  // ===========================================================================
+  // Cele, misje, osiągnięcia i ekran końca partii
+  // ===========================================================================
+  function missionsHtml() {
+    return '<div class="missions">' + WT.goals.missions().map((m) => {
+      const pr = WT.goals.progress(m), pct = Math.max(0, Math.min(100, Math.round(100 * pr.have / Math.max(0.0001, pr.need))));
+      return '<div class="mission' + (m.done ? ' done' : '') + '"><div class="m-head">' + icon(m.done ? 'check' : 'flag', 'ico-sm') + '<span>' + esc(m.text) + '</span><b class="num">' + (m.done ? 'wykonana' : (typeof pr.have === 'number' && pr.have % 1 ? fmtNum(pr.have, 2) : fmtInt(pr.have)) + ' / ' + (pr.need % 1 ? fmtNum(pr.need, 2) : fmtInt(pr.need))) + '</b></div>' +
+        '<div class="progress"><i style="width:' + (m.done ? 100 : pct) + '%"></i></div></div>';
+    }).join('') + '</div><div class="hint">Nagroda za misję: pieniądze (ok. 15 tygodniowych dochodów) i stabilność +8 na rok.</div>';
+  }
+  function achievementsHtml() {
+    const un = WT.goals.unlocked(), n = WT.goals.ACHIEVEMENTS.filter((a) => un[a.id]).length;
+    return '<div class="section-title" style="margin-top:14px">Osiągnięcia (' + n + '/' + WT.goals.ACHIEVEMENTS.length + ')</div><div class="ach-grid">' +
+      WT.goals.ACHIEVEMENTS.map((a) => '<div class="ach' + (un[a.id] ? ' on' : '') + '" title="' + esc(a.desc) + '">' + icon(un[a.id] ? 'trophy' : 'info', 'ico-sm') + '<span><b>' + esc(a.name) + '</b><small>' + esc(a.desc) + '</small></span></div>').join('') + '</div>';
+  }
+  function openGoals() {
+    if (!WT.goals || !G()) return;
+    const st = WT.goals.summary();
+    openModal({ title: icon('flag') + ' Cele: ' + esc(countryName(me())), wide: true,
+      body: '<div class="section-title">Misje</div>' + missionsHtml() + achievementsHtml() +
+        '<div class="kv" style="margin-top:14px"><span class="k">Poziom trudności</span><span class="v txt">' + esc(st.difficulty) + '</span><span class="k">Bieżący wynik</span><span class="v">' + fmtInt(st.score) + ' pkt</span></div>' });
+  }
+  /** Ekran końca partii: statystyki, osiągnięcia tej partii, wynik. */
+  function openEndScreen(dead) {
+    if (!WT.goals) return;
+    const s = WT.goals.summary(), un = WT.goals.unlocked();
+    const tile = (k, v) => '<div class="stat-tile"><div class="k">' + k + '</div><div class="v">' + v + '</div></div>';
+    if (WT.sound) WT.sound.play(dead ? 'bad' : 'win');
+    openModal({ title: icon('trophy') + (dead ? ' Koniec gry — ' + esc(countryName(me())) + ' upada' : ' Wynik partii: ' + esc(countryName(me()))), wide: true,
+      body: '<div class="end-score"><span>Wynik</span><b>' + fmtInt(s.score) + '</b><small>poziom: ' + esc(s.difficulty) + '</small></div>' +
+        '<div class="stat-grid end-grid">' + tile('Tury', fmtInt(s.turns)) + tile('Prowincje (szczyt)', s.provs + ' (' + s.maxProvs + ')') + tile('Bitwy wygrane', fmtInt(s.battlesWon)) +
+        tile('Bitwy przegrane', fmtInt(s.battlesLost)) + tile('Wojny', fmtInt(s.wars)) + tile('Traktaty', fmtInt(s.treaties)) + tile('Wasale', fmtInt(s.vassals)) +
+        tile('Zdobyte / utracone', s.gained + ' / ' + s.lost) + tile('Misje', fmtInt(s.missions)) + '</div>' +
+        (s.achievements.length ? '<div class="section-title" style="margin-top:12px">Osiągnięcia w tej partii</div><div class="ach-grid">' + s.achievements.map((id) => {
+          const a = WT.goals.ACHIEVEMENTS.find((x) => x.id === id); return a ? '<div class="ach on">' + icon('trophy', 'ico-sm') + '<span><b>' + esc(a.name) + '</b><small>' + esc(a.desc) + '</small></span></div>' : '';
+        }).join('') + '</div>' : '') +
+        '<div class="hint" style="margin-top:10px">Odblokowane osiągnięcia (wszystkie partie): ' + Object.keys(un).length + ' / ' + WT.goals.ACHIEVEMENTS.length + '.</div>',
+      buttons: [{ label: dead ? 'Obserwuj dalej' : 'Graj dalej' }, { label: 'Menu główne', cls: 'btn-primary', onClick: () => { WT.G = null; showStart(); } }] });
   }
 
   // ===========================================================================
@@ -2962,6 +3014,8 @@
     const mapChanged = () => { if (!S.busy) { R().invalidate(); } };
     ['occupy', 'annex', 'eliminated', 'peace'].forEach((n) => WT.events.on(n, mapChanged));
     WT.events.on('proposal', () => { if (!S.busy) setTimeout(checkProposals, 50); });
+    WT.events.on('achievement', (a) => { toast('Osiągnięcie: ' + a.name + ' — ' + a.desc, 'ok', 6000); if (WT.sound) WT.sound.play('win'); });
+    WT.events.on('mission', (m) => { toast('Misja wykonana: ' + m.mission.text + ' (+' + fmtNum(m.money, 1) + ' mld $)', 'ok', 6000); if (WT.sound) WT.sound.play('win'); });
     WT.events.on('gameover', () => { if (!S.busy) setTimeout(checkGameOver, 50); });
     // Wojny poza turą (np. sojusznik wciąga gracza) — własne wypowiedzenia mają już toast z wyniku akcji.
     WT.events.on('war', (p) => {

@@ -32,7 +32,7 @@ WT.turn = (function () {
       timed('economy', runEconomy);
       timed('research', function () { WT.tech.processTurn(); });
       timed('diplomacy', function () { WT.diplomacy.processTurn(); });
-      timed('world', function () { if (WT.world) WT.world.processTurn(); });
+      timed('world', function () { if (WT.world) WT.world.processTurn(); if (WT.goals) WT.goals.processTurn(); });
       updateExhaustion();
       recordHistory();
       advanceTime();

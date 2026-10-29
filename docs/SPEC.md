@@ -381,3 +381,7 @@ Fonty: systemowe sans + monospace dla liczb.
 - Render: `animateFrom({armies, fleets})` (przejście markerów 550 ms), `flash(prov, kind, delayMs)` (battle/occupy/shell/bomb), `attachMinimap(canvas)`.
 - `WT.sound.play(name)` (click, order, turn, battle, event, alert, win, bad), `enabled/setEnabled` (localStorage `wartime_sound`).
 - `G.history [{t, d, gdp, bal, cash, army, provs, tech, stab}]` (turn.recordHistory, maks. 600). UI: `openStats`, `showTurnSummary`, `adviceList`, `startTutorial` (localStorage `wartime_tutorial`).
+
+### Cele i ponowna gra (js/core/goals.js → WT.goals)
+- `settings.difficulty` ('easy'|'normal'|'hard'|'brutal', `DIFFICULTY`), `incomeMult(cc)` w `economy.income().total`, premia agresji w `diplomacy.aggression()`; `settings.events` (piaskownica = false).
+- `G.stats` (liczniki z szyny zdarzeń: `attach()` po `newGame` i `save.applyState`), `G.missions` (`missions()`, `progress(m)`), osiągnięcia w localStorage `wartime_achievements` (`ACHIEVEMENTS`, `unlock(id)` → zdarzenie `achievement`), `score()`, `summary()`, `processTurn()` w `turn.end`.

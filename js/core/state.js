@@ -49,6 +49,7 @@ WT.state = (function () {
     // państwo nieistniejące w tej epoce: gra zaczyna się powstaniem na jego ziemiach rdzennych
     if (opts.player && !(g.countries[opts.player] && g.countries[opts.player].alive)) startUprising(g, opts.player);
     if (!g.countries[g.player] || !g.countries[g.player].alive) g.player = countriesAlive()[0];
+    if (WT.goals) WT.goals.attach();
     addLog('Rozpoczęto grę jako ' + g.countries[g.player].name + '. ' + dateStr() + '.', g.player);
     return g;
   }
@@ -224,7 +225,8 @@ WT.state = (function () {
   /** Ustawienia rozgrywki: auto-odrzucanie paktów i agresywność AI (0–100, 50 = standard). */
   function makeSettings(opts) {
     var a = opts && opts.aiAggression != null ? +opts.aiAggression : 50;
-    return { autoRejectPacts: !!(opts && opts.autoRejectPacts), aiAggression: U.clamp(isNaN(a) ? 50 : a, 0, 100) };
+    return { autoRejectPacts: !!(opts && opts.autoRejectPacts), aiAggression: U.clamp(isNaN(a) ? 50 : a, 0, 100),
+      difficulty: opts && opts.difficulty || 'normal', events: !(opts && opts.events === false) };
   }
   function settings() {
     var g = G();

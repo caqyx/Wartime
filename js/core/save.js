@@ -48,6 +48,7 @@ WT.save = (function () {
     if (map && map.provinces.length > g.provinces.length) WT.state.extendWorld(g);   // np. dopisana Afryka
     if (WT.tech) WT.tech.ensureAll();     // zapisy sprzed nauki: budżet, punkty, drzewko
     if (WT.military && WT.military.mergeAll) WT.military.mergeAll();   // stare zapisy: scal stojące armie
+    if (WT.goals) WT.goals.attach();
     return true;
   }
 

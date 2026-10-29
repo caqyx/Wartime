@@ -166,6 +166,7 @@ WT.land = (function () {
     payMoney(d.a, d.b, d.aMoney); payMoney(d.b, d.a, d.bMoney);
     moveTroops(d.a, d.b, d.aTroops); moveTroops(d.b, d.a, d.bTroops);
     var gift = !d.bProvs.length && !d.bMoney && !d.bTroops;
+    if (WT.goals && ((d.a === G().player && d.bProvs.length) || (d.b === G().player && d.aProvs.length && !gift))) WT.goals.unlock('merchant');
     D().changeRel(d.a, d.b, gift ? Math.min(30, 8 + 4 * d.aProvs.length) : 4);
     D().afterBorderChange();
     S.addLog('Umowa terytorialna: ' + name(d.a) + ' – ' + name(d.b) + ': ' + describe(d) + '.', isPlayer(d.b) ? d.b : d.a);

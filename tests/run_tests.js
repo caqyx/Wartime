@@ -1,7 +1,7 @@
 /* Testy logiki gry w node (bez frameworków): `node tests/run_tests.js` */
 var path = require('path');
 var ROOT = path.join(__dirname, '..');
-var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'land', 'world', 'military', 'warfare', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
+var CORE = ['util', 'state', 'economy', 'diplomacy', 'vassal', 'land', 'world', 'goals', 'military', 'warfare', 'naval', 'air', 'tech', 'ai', 'god', 'turn', 'save'];
 CORE.forEach(function (m) { require(path.join(ROOT, 'js/core', m + '.js')); });
 var WT = global.WT;
 var mock = require('./mock_map.js');
@@ -1127,6 +1127,30 @@ test('żywy świat: wydarzenia, niepokoje, bunt, agresywna ekspansja', function 
   assert(D.relation('AAA', 'BBB') < r0, 'sąsiedzi nie ufają agresorowi');
   assert(Wd.aeOf('AAA') < 60, 'ekspansja wygasa');
   assert(Wd.aeWarFactor('AAA') > 2, 'AI chętniej atakuje agresora');
+});
+
+test('cele: misje, osiągnięcia, trudność, wynik partii', function () {
+  freshGame({ difficulty: 'hard' });
+  var Gl = WT.goals, S = WT.state;
+  eq(G().settings.difficulty, 'hard', 'poziom trudności zapisany');
+  assert(Gl.incomeMult('AAA') < 1 && Gl.incomeMult('BBB') > 1, 'trudny: gracz zarabia mniej, AI więcej');
+  var ms = Gl.missions();
+  assert(ms.length >= 3, 'misje: ' + ms.map(function (m) { return m.text; }).join(' | '));
+  var mp = ms.filter(function (m) { return m.id === 'provs'; })[0];
+  assert(mp, 'misja prowincji');
+  // spełnienie misji → nagroda
+  var t0 = G().countries.AAA.treasury;
+  S.provincesOf('BBB').slice(0, mp.target).forEach(function (id) { if (S.provincesOf('AAA').length < mp.target && id !== G().countries.BBB.capital) S.setOwner(id, 'AAA'); });
+  S.provincesOf('CCC').forEach(function (id) { if (S.provincesOf('AAA').length < mp.target) S.setOwner(id, 'AAA'); });
+  Gl.processTurn();
+  assert(mp.done, 'misja wykonana: ' + JSON.stringify(Gl.progress(mp)));
+  assert(G().countries.AAA.treasury > t0, 'nagroda pieniężna');
+  // osiągnięcie z bitwy
+  WT.events.emit('battle', { attacker: 'AAA', defender: 'BBB', winnerCc: 'AAA' });
+  eq(Gl.stats().battlesWon, 1, 'licznik bitew');
+  assert(Gl.unlocked().first_blood, 'osiągnięcie Pierwsza krew');
+  var sum = Gl.summary();
+  assert(sum.score > 0 && sum.missions >= 1 && sum.difficulty === 'Trudny', 'podsumowanie: ' + JSON.stringify(sum));
 });
 
 test('God Mode: skarbiec nie maleje, budowy natychmiast, narzędzia', function () {

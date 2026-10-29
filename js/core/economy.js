@@ -90,7 +90,7 @@ WT.economy = (function () {
     }
     res.aid = foreignAid(cc);
     res.trade = (res.tax + res.factories) * TRADE_BONUS * Math.min(MAX_TRADES, WT.diplomacy.tradesOf ? WT.diplomacy.tradesOf(cc).length : 0);
-    res.total = res.tax + res.factories + res.occupation + res.aid + res.trade;
+    res.total = (res.tax + res.factories + res.occupation + res.aid + res.trade) * (WT.goals ? WT.goals.incomeMult(cc) : 1);
     return res;
   }
 

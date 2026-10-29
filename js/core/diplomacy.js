@@ -537,7 +537,10 @@ WT.diplomacy = (function () {
   }
 
   /** Agresywność AI z ustawień jako mnożnik: 0 (pokojowe) … 1 (standard) … 2 (bardzo agresywne). */
-  function aggression() { return S.settings().aiAggression / 50; }
+  function aggression() {
+    var d = WT.goals ? WT.goals.difficulty().aggr : 0;
+    return U.clamp(S.settings().aiAggression + (S.settings().aiAggression > 0 ? d : 0), 0, 100) / 50;
+  }
 
   function improveRelationsCost(a) { return U.round(1 + WT.economy.countryGdp(a) * 0.001, 2); }
 

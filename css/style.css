@@ -1052,3 +1052,24 @@ input[type=checkbox]:checked:active::before { transform: translateX(13px); }
 .tut-card p { margin: 0 0 10px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); }
 .tut-step { font-size: 10px; font-weight: 650; letter-spacing: 0.06em; color: var(--acc-300); }
 .tut-card .row-actions { justify-content: flex-end; }
+
+/* ---------- Misje, osiągnięcia, wynik ---------- */
+.missions { display: flex; flex-direction: column; gap: 8px; }
+.mission { padding: 8px 10px; border-radius: var(--r-sm); background: rgba(3, 6, 12, 0.3); border: 1px solid var(--stroke-1); }
+.mission .m-head { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--text-1); margin-bottom: 6px; }
+.mission .m-head b { margin-left: auto; font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
+.mission.done { border-color: rgba(62, 194, 127, 0.4); }
+.mission.done .m-head .ico, .mission.done .m-head b { color: #6fd6a0; }
+.ach-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ach { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border-radius: var(--r-sm); background: rgba(3, 6, 12, 0.25); border: 1px solid var(--stroke-1); opacity: 0.55; font-size: var(--fs-xs); }
+.ach b { display: block; color: var(--text-1); font-size: var(--fs-sm); }
+.ach small { color: var(--text-3); }
+.ach.on { opacity: 1; border-color: oklch(80% 0.12 85 / 0.45); background: oklch(80% 0.12 85 / 0.07); }
+.ach.on .ico { color: oklch(85% 0.12 85); }
+.end-score { display: flex; flex-direction: column; align-items: center; margin-bottom: 12px; }
+.end-score span { font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); }
+.end-score b { font-size: 44px; font-weight: 800; color: var(--acc-200); letter-spacing: -0.02em; line-height: 1.1; }
+.end-score small { color: var(--text-3); }
+.end-grid { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 700px) { .ach-grid { grid-template-columns: 1fr; } .end-grid { grid-template-columns: 1fr 1fr; } }
+#opt-diff .seg-btn { font-size: var(--fs-xs); }
